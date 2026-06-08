@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+
+    <!-- Groupe technique de l'intégration -->
+    <record id="group_api" model="res.groups">
+        <field name="name">Gestion Recrutement / API Intégration</field>
+        <field name="category_id" ref="base.module_category_hidden"/>
+    </record>
+
+    <!-- Utilisateur technique dédié (moindre privilège).
+         Il ne sert qu'aux appels internes du contrôleur (with_user) et
+         ne doit pas être utilisable pour une connexion interactive. -->
+    <record id="user_api" model="res.users">
+        <field name="name">Gestion Recrutement - Intégration Site</field>
+        <field name="login">gr_api_integration</field>
+        <field name="active" eval="True"/>
+        <field name="share" eval="False"/>
+        <field name="groups_id" eval="[
+            (4, ref('group_api')),
+            (4, ref('hr_recruitment.group_hr_recruitment_user')),
+        ]"/>
+    </record>
+
+</odoo>
