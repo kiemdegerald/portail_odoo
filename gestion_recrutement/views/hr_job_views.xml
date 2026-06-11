@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_hr_job_form_gr" model="ir.ui.view">
+        <field name="name">hr.job.form.gr.integration</field>
+        <field name="model">hr.job</field>
+        <field name="inherit_id" ref="hr.view_hr_job_form"/>
+        <field name="arch" type="xml">
+
+            <xpath expr="//notebook" position="inside">
+                <page string="Diffusion site web" name="gr_site">
+                    <group>
+                        <group string="Diffusion">
+                            <field name="gr_is_published"/>
+                            <field name="gr_document_count"/>
+                        </group>
+                        <group string="Informations affichees">
+                            <field name="gr_location"/>
+                            <field name="gr_contract_type"/>
+                            <field name="gr_experience_required"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="gr_short_summary"
+                               placeholder="Accroche courte affichee dans les listes d'offres..."/>
+                    </group>
+                    <separator string="Missions / Responsabilites"/>
+                    <field name="gr_missions"/>
+                    <separator string="Profil recherche / Competences"/>
+                    <field name="gr_candidate_profile"/>
+                    <separator string="Avantages"/>
+                    <field name="gr_benefits"/>
+                </page>
+
+                <page string="Questions de filtre" name="gr_filter">
+                    <field name="filter_question_ids">
+                        <tree>
+                            <field name="sequence" widget="handle"/>
+                            <field name="name"/>
+                            <field name="answer_type"/>
+                            <field name="is_required"/>
+                            <field name="active"/>
+                        </tree>
+                        <form>
+                            <group>
+                                <field name="name"/>
+                                <field name="answer_type"/>
+                                <field name="is_required"/>
+                                <field name="active"/>
+                            </group>
+                            <group string="Choix possibles"
+                                   invisible="answer_type != 'choice'">
+                                <field name="option_ids" nolabel="1">
+                                    <tree editable="bottom">
+                                        <field name="sequence" widget="handle"/>
+                                        <field name="name"/>
+                                    </tree>
+                                </field>
+                            </group>
+                            <separator string="Règles automatiques"/>
+                            <p class="text-muted">
+                                Ajoutez une ou plusieurs règles. Chaque règle :
+                                « Si la réponse &lt;condition&gt; alors &lt;action&gt; ».
+                                Si plusieurs se déclenchent, l'action la plus forte
+                                l'emporte (Bloquer > Archiver > Placer à l'étape).
+                            </p>
+                            <field name="rule_ids">
+                                <tree editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="answer_type" column_invisible="1"/>
+                                    <!-- Condition Oui / Non -->
+                                    <field name="rule_value_yesno"
+                                           string="Si la réponse est"
+                                           column_invisible="parent.answer_type != 'yes_no'"
+                                           required="parent.answer_type == 'yes_no'"/>
+                                    <!-- Condition Nombre : opérateur + valeur -->
+                                    <field name="rule_number_operator"
+                                           string="Si la valeur est"
+                                           column_invisible="parent.answer_type != 'number'"
+                                           required="parent.answer_type == 'number'"/>
+                                    <field name="rule_value_number" string="Valeur seuil"
+                                           column_invisible="parent.answer_type != 'number'"/>
+                                    <!-- Action -->
+                                    <field name="rule_action" string="Alors"/>
+                                    <field name="rule_stage_id" string="Étape cible"
+                                           invisible="rule_action != 'set_stage'"
+                                           required="rule_action == 'set_stage'"/>
+                                    <field name="rule_summary"/>
+                                </tree>
+                            </field>
+                        </form>
+                    </field>
+                    <p class="text-muted">
+                        Astuce : une question peut avoir plusieurs regles.
+                        Exemple Oui/Non : "Si Non alors Bloquer" ET "Si Oui alors
+                        Placer a l'etape Nouveau". Exemple Nombre (annees
+                        d'experience) : "Si &lt; 3 alors Archiver" ET "Si &gt;= 3
+                        alors Placer a l'etape Nouveau".
+                    </p>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_hr_applicant_form_gr" model="ir.ui.view">
+        <field name="name">hr.applicant.form.gr</field>
+        <field name="model">hr.applicant</field>
+        <field name="inherit_id" ref="hr_recruitment.hr_applicant_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Reponses de filtre" name="gr_answers"
+                      invisible="not filter_answer_ids">
+                    <field name="filter_answer_ids">
+                        <tree>
+                            <field name="question_text"/>
+                            <field name="answer_value"/>
+                        </tree>
+                    </field>
+                    <group>
+                        <field name="gr_source_channel" readonly="1"/>
+                        <field name="gr_external_ref" readonly="1"/>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>
