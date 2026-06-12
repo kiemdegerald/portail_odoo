@@ -77,3 +77,12 @@ et `custom_salary_reports` de l'écosystème LICELI.
   commenté) ; notifications email à chaque étape ; téléchargement des
   documents officiels des missions validées. Aucune logique métier dans
   le connecteur.
+
+## Module recrutement (même écosystème)
+
+- **`gestion_recrutement`** (dépend du Recrutement standard d'Odoo) :
+  passerelle HTTP entre le site web externe et Odoo — diffusion des
+  offres publiées, réception des candidatures avec CV injectées dans le
+  pipeline standard. API protégée par clé (paramètre système, jamais
+  dans le code), limitation de débit, création automatique de l'employé
+  à l'embauche (paramétrable).

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!--
+        Parametres NON secrets uniquement.
+        La cle API (gestion_recrutement.api_key) N'EST PAS definie ici : elle est
+        generee et posee par script apres installation (voir README).
+    -->
+
+    <record id="param_gr_enabled" model="ir.config_parameter">
+        <field name="key">gestion_recrutement.enabled</field>
+        <field name="value">0</field>
+    </record>
+
+    <record id="param_gr_cors_origin" model="ir.config_parameter">
+        <field name="key">gestion_recrutement.cors_origin</field>
+        <field name="value">*</field>
+    </record>
+
+    <record id="param_gr_auto_sync" model="ir.config_parameter">
+        <field name="key">gestion_recrutement.auto_sync</field>
+        <field name="value">0</field>
+    </record>
+
+    <record id="param_gr_site_webhook_url" model="ir.config_parameter">
+        <field name="key">gestion_recrutement.site_webhook_url</field>
+        <field name="value"></field>
+    </record>
+
+    <record id="param_gr_rate_limit_max" model="ir.config_parameter">
+        <field name="key">gestion_recrutement.rate_limit_max</field>
+        <field name="value">5</field>
+    </record>
+    <record id="param_gr_rate_limit_window" model="ir.config_parameter">
+        <field name="key">gestion_recrutement.rate_limit_window</field>
+        <field name="value">60</field>
+    </record>
+
+    <!-- 1 = creer automatiquement l'employe quand la candidature atteint une
+         etape d'embauche (hired_stage). Mettre 0 pour desactiver. -->
+    <record id="param_gr_auto_create_employee" model="ir.config_parameter">
+        <field name="key">gestion_recrutement.auto_create_employee</field>
+        <field name="value">1</field>
+    </record>
+</odoo>
