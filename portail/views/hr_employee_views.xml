@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Champ « Validateur congés » dans la section Validateurs
+         (après le champ standard « Congés » ajouté par hr_holidays) -->
+    <record id="view_employee_form_leave_validator_portail" model="ir.ui.view">
+        <field name="name">hr.employee.form.portail.validateur</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr_holidays.view_employee_form_leave_inherit"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='leave_manager_id']" position="after">
+                <field name="portail_leave_validator_id" widget="many2one_avatar_employee"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Bouton « Activer accès portail » sur la fiche employé -->
+    <record id="view_employee_form_portail" model="ir.ui.view">
+        <field name="name">hr.employee.form.portail</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <button name="action_grant_portal_access"
+                        type="object"
+                        string="Activer accès portail"
+                        class="btn-secondary"
+                        groups="hr.group_hr_user"
+                        help="Crée ou réactive un utilisateur Portail (gratuit) pour cet employé, rattaché à son contact professionnel, et lui envoie une invitation."/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>
