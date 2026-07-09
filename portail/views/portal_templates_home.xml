@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Accueil du portail : cartes /my et fil d'ariane -->
+
+    <template id="portal_my_home_portail" name="Portail : cartes RH"
+              inherit_id="portal.portal_my_home" priority="30">
+        <xpath expr="//div[hasclass('o_portal_docs')]" position="inside">
+            <t t-call="portal.portal_docs_entry">
+                <t t-set="title">Bulletins de paie</t>
+                <t t-set="url" t-value="'/my/payslips'"/>
+                <t t-set="text">Consulter et télécharger mes bulletins</t>
+                <t t-set="config_card" t-value="True"/>
+                <t t-set="placeholder_count" t-value="'payslip_count'"/>
+            </t>
+            <t t-call="portal.portal_docs_entry">
+                <t t-set="title">Congés</t>
+                <t t-set="url" t-value="'/my/leaves'"/>
+                <t t-set="text">Voir mon solde et l'historique de mes congés</t>
+                <t t-set="config_card" t-value="True"/>
+                <t t-set="placeholder_count" t-value="'leave_count'"/>
+            </t>
+            <t t-if="portail_is_manager" t-call="portal.portal_docs_entry">
+                <t t-set="title">Congés de mon équipe</t>
+                <t t-set="url" t-value="'/my/team/leaves'"/>
+                <t t-set="text">Approuver ou refuser les demandes de mes collaborateurs</t>
+                <t t-set="config_card" t-value="True"/>
+                <t t-set="placeholder_count" t-value="'team_leave_count'"/>
+            </t>
+        </xpath>
+    </template>
+
+    <template id="portal_breadcrumbs_portail" name="Portail : fil d'ariane"
+              inherit_id="portal.portal_breadcrumbs" priority="30">
+        <xpath expr="//ol[hasclass('o_portal_submenu')]" position="inside">
+            <li t-if="page_name == 'payslip'" class="breadcrumb-item">
+                <a t-if="payslip" href="/my/payslips">Bulletins de paie</a>
+                <t t-else="">Bulletins de paie</t>
+            </li>
+            <li t-if="page_name == 'payslip' and payslip" class="breadcrumb-item active">
+                <t t-esc="payslip.number or payslip.name"/>
+            </li>
+            <li t-if="page_name == 'leave'" class="breadcrumb-item active">Congés</li>
+            <li t-if="page_name == 'team_leave'" class="breadcrumb-item active">Congés de mon équipe</li>
+        </xpath>
+    </template>
+
+</odoo>
