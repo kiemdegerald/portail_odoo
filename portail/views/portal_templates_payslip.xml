@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Bulletins de paie : liste et détail -->
+
+    <template id="portal_my_payslips" name="Mes bulletins de paie">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Bulletins de paie</t>
+            </t>
+
+            <t t-if="not payslips">
+                <div class="alert alert-info mt-3" role="alert">
+                    Aucun bulletin de paie n'est disponible pour le moment.
+                </div>
+            </t>
+
+            <t t-if="payslips" t-call="portal.portal_table">
+                <thead>
+                    <tr class="active">
+                        <th>Référence</th>
+                        <th>Période</th>
+                        <th class="text-end">Net à payer</th>
+                        <th class="text-center">Statut</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr t-foreach="payslips" t-as="ps">
+                        <td>
+                            <a t-attf-href="/my/payslips/#{ps.id}">
+                                <t t-esc="ps.number or ps.name"/>
+                            </a>
+                        </td>
+                        <td>
+                            <span t-field="ps.date_from"/> &#8594; <span t-field="ps.date_to"/>
+                        </td>
+                        <td class="text-end">
+                            <span t-esc="ps.net_wage"
+                                  t-options="{'widget': 'monetary', 'display_currency': ps.company_id.currency_id}"/>
+                        </td>
+                        <td class="text-center">
+                            <span t-if="ps.state == 'paid'" class="badge rounded-pill text-bg-success">Payé</span>
+                            <span t-else="" class="badge rounded-pill text-bg-info">Validé</span>
+                        </td>
+                        <td class="text-end">
+                            <a t-attf-href="/my/payslips/#{ps.id}/download"
+                               class="btn btn-sm btn-primary" title="Télécharger le PDF">
+                                <i class="fa fa-download"/> Télécharger
+                            </a>
+                        </td>
+                    </tr>
+                </tbody>
+            </t>
+        </t>
+    </template>
+
+    <template id="portal_my_payslip_detail" name="Détail du bulletin">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Bulletin <t t-esc="payslip.number or payslip.name"/></t>
+            </t>
+
+            <div class="card mt-3">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p class="mb-1"><strong>Employé :</strong> <span t-field="payslip.employee_id.name"/></p>
+                            <p class="mb-1"><strong>Référence :</strong> <t t-esc="payslip.number or payslip.name"/></p>
+                        </div>
+                        <div class="col-md-6">
+                            <p class="mb-1">
+                                <strong>Période :</strong>
+                                <span t-field="payslip.date_from"/> &#8594; <span t-field="payslip.date_to"/>
+                            </p>
+                            <p class="mb-1">
+                                <strong>Net à payer :</strong>
+                                <span t-esc="payslip.net_wage"
+                                      t-options="{'widget': 'monetary', 'display_currency': payslip.company_id.currency_id}"/>
+                            </p>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <a t-attf-href="/my/payslips/#{payslip.id}/download" class="btn btn-primary">
+                            <i class="fa fa-download"/> Télécharger le PDF
+                        </a>
+                        <a href="/my/payslips" class="btn btn-link">Retour à la liste</a>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+</odoo>
