@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Espace validateur : liste des demandes du périmètre + détail/décision -->
+
+    <template id="portal_team_leaves" name="Congés de mon équipe">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Congés de mon équipe</t>
+            </t>
+
+            <div t-if="success_message" class="alert alert-success mt-3" role="alert">
+                <t t-esc="success_message"/>
+            </div>
+            <div t-if="error_message" class="alert alert-danger mt-3" role="alert">
+                <t t-esc="error_message"/>
+            </div>
+
+            <div class="mt-3">
+                <a href="/my/leaves" class="btn btn-sm btn-outline-secondary">
+                    <i class="fa fa-arrow-left"/> Mes congés
+                </a>
+            </div>
+
+            <t t-if="not leaves">
+                <div class="alert alert-info mt-3" role="alert">
+                    <t t-if="filterby == 'pending'">
+                        Aucune demande de congé en attente d'approbation.
+                        <a href="/my/team/leaves?filterby=all">Voir toutes les demandes</a>.
+                    </t>
+                    <t t-else="">
+                        Aucune demande de congé pour votre équipe.
+                    </t>
+                </div>
+            </t>
+
+            <t t-if="leaves" t-call="portal.portal_table">
+                <thead>
+                    <tr class="active">
+                        <th>Employé</th>
+                        <th>Type</th>
+                        <th>Du</th>
+                        <th>Au</th>
+                        <th class="text-end">Durée</th>
+                        <th class="text-center">Statut</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr t-foreach="leaves" t-as="lv">
+                        <td><span t-field="lv.employee_id.name"/></td>
+                        <td><span t-field="lv.holiday_status_id.name"/></td>
+                        <td><span t-field="lv.request_date_from"/></td>
+                        <td><span t-field="lv.request_date_to"/></td>
+                        <td class="text-end"><t t-esc="lv.duration_display"/></td>
+                        <td class="text-center">
+                            <span t-if="lv.state == 'validate'" class="badge rounded-pill text-bg-success">
+                                <t t-esc="leave_state_labels.get(lv.state, lv.state)"/>
+                            </span>
+                            <span t-elif="lv.state == 'refuse'" class="badge rounded-pill text-bg-danger">
+                                <t t-esc="leave_state_labels.get(lv.state, lv.state)"/>
+                            </span>
+                            <span t-else="" class="badge rounded-pill text-bg-secondary">
+                                <t t-esc="leave_state_labels.get(lv.state, lv.state)"/>
+                            </span>
+                        </td>
+                        <td class="text-end text-nowrap">
+                            <a t-attf-href="/my/team/leaves/#{lv.id}"
+                               t-attf-class="btn btn-sm #{'btn-primary' if lv.state in leave_approvable_states else 'btn-outline-secondary'}"
+                               title="Voir le détail de la demande">
+                                <i class="fa fa-eye"/> Voir
+                            </a>
+                        </td>
+                    </tr>
+                </tbody>
+            </t>
+        </t>
+    </template>
+
+    <template id="portal_team_leave_detail" name="Demande de congé (équipe)">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Demande de congé — <t t-esc="leave.employee_id.name"/></t>
+            </t>
+
+            <!-- Détail de la demande -->
+            <div class="card mt-3">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p class="mb-1"><strong>Employé :</strong> <span t-field="leave.employee_id.name"/></p>
+                            <p class="mb-1"><strong>Type de congé :</strong> <span t-field="leave.holiday_status_id.name"/></p>
+                            <p class="mb-1">
+                                <strong>Statut :</strong>
+                                <span t-if="leave.state == 'validate'" class="badge rounded-pill text-bg-success">
+                                    <t t-esc="leave_state_labels.get(leave.state, leave.state)"/>
+                                </span>
+                                <span t-elif="leave.state == 'refuse'" class="badge rounded-pill text-bg-danger">
+                                    <t t-esc="leave_state_labels.get(leave.state, leave.state)"/>
+                                </span>
+                                <span t-else="" class="badge rounded-pill text-bg-secondary">
+                                    <t t-esc="leave_state_labels.get(leave.state, leave.state)"/>
+                                </span>
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <p class="mb-1">
+                                <strong>Période :</strong>
+                                <span t-field="leave.request_date_from"/> &#8594; <span t-field="leave.request_date_to"/>
+                            </p>
+                            <p class="mb-1"><strong>Durée :</strong> <t t-esc="leave.duration_display"/></p>
+                            <p class="mb-1"><strong>Demandé le :</strong> <span t-field="leave.create_date" t-options="{'widget': 'date'}"/></p>
+                        </div>
+                    </div>
+                    <hr/>
+                    <p class="mb-1"><strong>Motif de l'employé :</strong></p>
+                    <p class="mb-1" style="white-space: pre-wrap;"><t t-esc="leave.private_name or '—'"/></p>
+                    <hr/>
+                    <p class="mb-1"><strong>Justificatif(s) :</strong></p>
+                    <p class="mb-1" t-if="not attachments"><span class="text-muted">Aucun justificatif joint.</span></p>
+                    <div t-if="attachments">
+                        <div t-foreach="attachments" t-as="att" class="d-flex align-items-center gap-1 mb-1">
+                            <a t-attf-href="/my/team/leaves/#{leave.id}/attachment/#{att.id}?inline=1"
+                               target="_blank" class="btn btn-sm btn-outline-primary"
+                               title="Afficher dans le navigateur">
+                                <i class="fa fa-eye"/> Voir
+                            </a>
+                            <a t-attf-href="/my/team/leaves/#{leave.id}/attachment/#{att.id}"
+                               class="btn btn-sm btn-outline-secondary" title="Télécharger">
+                                <i class="fa fa-download"/> <t t-esc="att.name"/>
+                            </a>
+                        </div>
+                    </div>
+                    <t t-if="leave.portail_decision_note">
+                        <hr/>
+                        <p class="mb-1"><strong>Commentaire de décision :</strong></p>
+                        <p class="mb-1" style="white-space: pre-wrap;"><t t-esc="leave.portail_decision_note"/></p>
+                    </t>
+                </div>
+            </div>
+
+            <!-- Bloc décision : uniquement si la demande est en attente -->
+            <div t-if="leave.state in leave_approvable_states" class="card mt-3">
+                <div class="card-body">
+                    <h5 class="card-title">Statuer sur la demande</h5>
+                    <div t-if="decision_error" class="alert alert-danger" role="alert">
+                        <t t-esc="decision_error"/>
+                    </div>
+                    <form t-attf-action="/my/team/leaves/#{leave.id}/decide" method="post">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <div class="mb-3">
+                            <label class="form-label" for="comment">
+                                Commentaire (raison de votre décision) <span class="text-danger">*</span>
+                            </label>
+                            <textarea name="comment" id="comment" rows="3" class="form-control"
+                                      required="required"
+                                      placeholder="Obligatoire — ce commentaire sera visible par l'employé."><t t-esc="decision_comment"/></textarea>
+                        </div>
+                        <button type="submit" name="decision" value="approve" class="btn btn-success"
+                                onclick="return this.form.reportValidity() &amp;&amp; confirm('Approuver cette demande de congé ?');">
+                            <i class="fa fa-check"/> Approuver
+                        </button>
+                        <button type="submit" name="decision" value="refuse" class="btn btn-outline-danger"
+                                onclick="return this.form.reportValidity() &amp;&amp; confirm('Refuser cette demande de congé ?');">
+                            <i class="fa fa-times"/> Refuser
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="mt-3">
+                <a href="/my/team/leaves" class="btn btn-link">&#8592; Retour à la liste</a>
+            </div>
+        </t>
+    </template>
+
+</odoo>
