@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Mes congés (employé) : solde + historique, modification d'une demande -->
+
+    <template id="portal_my_leaves" name="Mes congés">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Congés</t>
+            </t>
+
+            <div t-if="success_message" class="alert alert-success mt-3" role="alert">
+                <t t-esc="success_message"/>
+            </div>
+
+            <div t-if="portail_is_manager" class="mt-3">
+                <a href="/my/team/leaves" class="btn btn-sm btn-outline-primary">
+                    <i class="fa fa-users"/> Congés de mon équipe
+                </a>
+            </div>
+
+            <!-- Solde par type -->
+            <h5 class="mt-3">Mon solde</h5>
+            <t t-if="not balances">
+                <div class="alert alert-info" role="alert">
+                    Aucune allocation de congés à afficher.
+                </div>
+            </t>
+            <div t-if="balances" class="table-responsive">
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr class="active">
+                            <th>Type</th>
+                            <th class="text-end">Alloué</th>
+                            <th class="text-end">Pris</th>
+                            <th class="text-end">Restant</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr t-foreach="balances" t-as="b">
+                            <td><t t-esc="b['name']"/></td>
+                            <td class="text-end"><t t-esc="b['allocated']"/></td>
+                            <td class="text-end"><t t-esc="b['taken']"/></td>
+                            <td class="text-end">
+                                <strong t-att-class="'text-danger' if b['remaining'] &lt; 0 else 'text-success'">
+                                    <t t-esc="b['remaining']"/>
+                                </strong>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Historique des demandes -->
+            <h5 class="mt-4">Historique de mes demandes</h5>
+            <t t-if="not leaves">
+                <div class="alert alert-info" role="alert">
+                    Aucune demande de congé enregistrée.
+                </div>
+            </t>
+            <t t-if="leaves" t-call="portal.portal_table">
+                <thead>
+                    <tr class="active">
+                        <th>Type</th>
+                        <th>Du</th>
+                        <th>Au</th>
+                        <th class="text-end">Durée</th>
+                        <th class="text-center">Statut</th>
+                        <th>Commentaire du manager</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr t-foreach="leaves" t-as="lv">
+                        <td><span t-field="lv.holiday_status_id.name"/></td>
+                        <td><span t-field="lv.request_date_from"/></td>
+                        <td><span t-field="lv.request_date_to"/></td>
+                        <td class="text-end"><t t-esc="lv.duration_display"/></td>
+                        <td class="text-center">
+                            <span t-if="lv.state == 'validate'" class="badge rounded-pill text-bg-success">
+                                <t t-esc="leave_state_labels.get(lv.state, lv.state)"/>
+                            </span>
+                            <span t-elif="lv.state == 'refuse'" class="badge rounded-pill text-bg-danger">
+                                <t t-esc="leave_state_labels.get(lv.state, lv.state)"/>
+                            </span>
+                            <span t-else="" class="badge rounded-pill text-bg-secondary">
+                                <t t-esc="leave_state_labels.get(lv.state, lv.state)"/>
+                            </span>
+                        </td>
+                        <td>
+                            <small t-if="lv.portail_decision_note" style="white-space: pre-wrap;">
+                                <t t-esc="lv.portail_decision_note"/>
+                            </small>
+                            <span t-else="" class="text-muted">&#8212;</span>
+                        </td>
+                        <td class="text-end text-nowrap">
+                            <t t-if="lv.state in leave_editable_states">
+                                <a t-attf-href="/my/leaves/#{lv.id}/edit"
+                                   class="btn btn-sm btn-primary" title="Modifier la demande">
+                                    <i class="fa fa-pencil"/> Modifier
+                                </a>
+                                <form t-attf-action="/my/leaves/#{lv.id}/cancel" method="post"
+                                      class="d-inline"
+                                      onsubmit="return confirm('Annuler définitivement cette demande de congé ?');">
+                                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                                            title="Annuler la demande">
+                                        <i class="fa fa-times"/> Annuler
+                                    </button>
+                                </form>
+                            </t>
+                            <span t-else="" class="text-muted">&#8212;</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </t>
+        </t>
+    </template>
+
+    <template id="portal_my_leave_edit" name="Modifier ma demande de congé">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Modifier ma demande de congé</t>
+            </t>
+
+            <div t-if="error.get('global')" class="alert alert-danger mt-3" role="alert">
+                <t t-esc="error['global']"/>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-body">
+                    <!-- Justificatifs existants : hors du formulaire principal
+                         (la suppression est un mini-formulaire POST, on ne peut
+                         pas imbriquer des <form>) -->
+                    <div class="mb-3">
+                        <label class="form-label">Justificatif(s) joint(s)</label>
+                        <div t-if="not attachments" class="text-muted mb-2">Aucun fichier joint.</div>
+                        <div t-if="attachments">
+                            <div t-foreach="attachments" t-as="att" class="d-flex align-items-center gap-1 mb-1">
+                                <a t-attf-href="/my/leaves/#{leave.id}/attachment/#{att.id}?inline=1"
+                                   target="_blank" class="btn btn-sm btn-outline-primary"
+                                   title="Afficher dans le navigateur">
+                                    <i class="fa fa-eye"/> Voir
+                                </a>
+                                <a t-attf-href="/my/leaves/#{leave.id}/attachment/#{att.id}"
+                                   class="btn btn-sm btn-outline-secondary" title="Télécharger">
+                                    <i class="fa fa-download"/> <t t-esc="att.name"/>
+                                </a>
+                                <form t-attf-action="/my/leaves/#{leave.id}/attachment/#{att.id}/delete"
+                                      method="post" class="d-inline"
+                                      onsubmit="return confirm('Retirer ce justificatif de la demande ?');">
+                                    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                                            title="Retirer ce fichier">
+                                        <i class="fa fa-trash"/> Retirer
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <form t-attf-action="/my/leaves/#{leave.id}/edit" method="post"
+                          enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="holiday_status_id">Type de congé</label>
+                            <select name="holiday_status_id" id="holiday_status_id"
+                                    t-attf-class="form-select #{'is-invalid' if error.get('holiday_status_id') else ''}">
+                                <option value="">— Choisir un type —</option>
+                                <t t-foreach="leave_types" t-as="lt">
+                                    <option t-att-value="lt.id"
+                                            t-att-selected="'selected' if form_values.get('holiday_status_id') == str(lt.id) else None">
+                                        <t t-esc="lt.portail_label or lt.name"/>
+                                    </option>
+                                </t>
+                            </select>
+                            <div class="invalid-feedback" t-if="error.get('holiday_status_id')">
+                                <t t-esc="error['holiday_status_id']"/>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label" for="request_date_from">Date de début</label>
+                                <input type="date" name="request_date_from" id="request_date_from"
+                                       t-att-value="form_values.get('request_date_from')"
+                                       t-attf-class="form-control #{'is-invalid' if error.get('request_date_from') else ''}"/>
+                                <div class="invalid-feedback" t-if="error.get('request_date_from')">
+                                    <t t-esc="error['request_date_from']"/>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label" for="request_date_to">Date de fin</label>
+                                <input type="date" name="request_date_to" id="request_date_to"
+                                       t-att-value="form_values.get('request_date_to')"
+                                       t-attf-class="form-control #{'is-invalid' if error.get('request_date_to') else ''}"/>
+                                <div class="invalid-feedback" t-if="error.get('request_date_to')">
+                                    <t t-esc="error['request_date_to']"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="name">Motif</label>
+                            <textarea name="name" id="name" rows="3" class="form-control"><t t-esc="form_values.get('name')"/></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="justificatif">Ajouter un ou plusieurs justificatifs</label>
+                            <input type="file" name="justificatif" id="justificatif" class="form-control"
+                                   multiple="multiple"
+                                   accept="application/pdf,image/jpeg,image/png,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"/>
+                            <small class="text-muted">Facultatif — PDF, JPEG, PNG ou Word, 5 Mo maximum par fichier.</small>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fa fa-save"/> Enregistrer les modifications
+                        </button>
+                        <a href="/my/leaves" class="btn btn-link">Retour sans enregistrer</a>
+                    </form>
+                </div>
+            </div>
+        </t>
+    </template>
+
+</odoo>
