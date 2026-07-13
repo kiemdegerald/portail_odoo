@@ -5,10 +5,16 @@
     "author": "LICELI Technologies",
     "website": "https://www.liceli-technologies.com",
     "category": "Human Resources",
-    "version": "17.0.1.0.0",
+    "version": "17.0.1.4.0",
     "license": "LGPL-3",
     "depends": ["portal", "website", "hr_payroll", "hr_holidays"],
-    "data": [],
+    "data": [
+        "views/portal_templates_home.xml",
+        "views/portal_templates_payslip.xml",
+        "views/portal_templates_leave.xml",
+        "views/portal_templates_team.xml",
+        "views/hr_employee_views.xml",
+    ],
     "application": True,
     "installable": True,
 }
