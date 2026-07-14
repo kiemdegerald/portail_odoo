@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Justificatifs uploadés depuis le portail, côté backend :
+         1) déplacés dans l'onglet « Documents de congé » (page
+            `leave_documents` du module hr_leave_documents, appliqué avant
+            celui-ci dans la chaîne d'héritage : même priorité, id inférieur) ;
+         2) visibles quel que soit l'état de la demande (le form standard les
+            cache hors draft/confirm/validate1) — on ne garde que la condition
+            sur le type de congé (option « Document justificatif » cochée).
+         NB : l'instruction position="move" doit être un enfant DIRECT de son
+         xpath porteur — d'où les deux étapes (créer le groupe, puis y
+         déplacer le champ). -->
+    <record id="hr_leave_view_form_portail" model="ir.ui.view">
+        <field name="name">hr.leave.form.portail.justificatifs</field>
+        <field name="model">hr.leave</field>
+        <field name="inherit_id" ref="hr_holidays.hr_leave_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//label[@for='supported_attachment_ids']" position="replace"/>
+            <xpath expr="//page[@name='leave_documents']" position="inside">
+                <group string="Justificatifs de l'employé" name="portail_justificatifs"
+                       invisible="not leave_type_support_document"/>
+            </xpath>
+            <xpath expr="//group[@name='portail_justificatifs']" position="inside">
+                <xpath expr="//field[@name='supported_attachment_ids']" position="move"/>
+            </xpath>
+            <xpath expr="//field[@name='supported_attachment_ids']" position="attributes">
+                <attribute name="invisible">not leave_type_support_document</attribute>
+                <attribute name="nolabel">1</attribute>
+                <attribute name="colspan">2</attribute>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>
