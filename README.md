@@ -9,3 +9,5 @@ circuit d'approbation, directement depuis le site web de l'entreprise.
 - Demandes de congé depuis le site web (formulaire sécurisé)
 - Suivi, modification et annulation de ses demandes
 - Espace validateur : approbation/refus avec commentaire obligatoire
+- Validateur de congés désigné par employé (indépendant du manager)
+- Notifications email du circuit (validateur et employé)
