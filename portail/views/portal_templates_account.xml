@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- « Modifier mes informations » : champs épurés, nom/email en lecture seule
+         (verrou serveur équivalent : controllers/portal_account.py) -->
+
+    <template id="portal_my_details_fields_portail" name="Portail : détails employé"
+              inherit_id="portal.portal_my_details_fields" priority="30">
+        <!-- Bandeau standard sur société/TVA/pays : sans objet ici -->
+        <xpath expr="//div[@t-if='not partner_can_edit_vat']" position="replace"/>
+        <!-- Champs « Nom de la société » et « Numéro de TVA » retirés -->
+        <xpath expr="//input[@name='company_name']/.." position="replace"/>
+        <xpath expr="//input[@name='vat']/.." position="replace"/>
+        <!-- Nom et e-mail : lecture seule (readonly = grisé et envoyé
+             au POST, contrairement à disabled qui casserait la
+             validation des champs obligatoires) -->
+        <xpath expr="//input[@name='name']" position="attributes">
+            <attribute name="readonly">readonly</attribute>
+        </xpath>
+        <xpath expr="//input[@name='email']" position="attributes">
+            <attribute name="readonly">readonly</attribute>
+        </xpath>
+    </template>
+
+
+    <!-- Page « Connexion & Sécurité » (/my/security) : le bloc
+         « Supprimer le compte » est retiré — les comptes des employés sont
+         gérés par les RH, un employé ne doit pas pouvoir désactiver le sien.
+         Verrou serveur équivalent : controllers/portal_account.py
+         (route /my/deactivate_account neutralisée). -->
+    <template id="portal_my_security_portail" name="Portail : sécurité sans suppression de compte"
+              inherit_id="portal.portal_my_security" priority="30">
+        <xpath expr="//section[@name='portal_deactivate_account']" position="replace"/>
+    </template>
+
+</odoo>
