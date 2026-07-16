@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Emails du circuit d'approbation des congés (portail).
+         noupdate="1" : les RH peuvent retoucher les textes dans
+         Paramètres > Technique > Modèles d'email sans qu'une mise à jour
+         du module les écrase. auto_delete=False : les emails envoyés
+         restent visibles dans Odoo (traçabilité). -->
+    <data noupdate="1">
+
+        <!-- 1) Au validateur : une demande vient d'être soumise -->
+        <record id="mail_template_leave_submitted" model="mail.template">
+            <field name="name">Portail congés : nouvelle demande (validateur)</field>
+            <field name="model_id" ref="hr_holidays.model_hr_leave"/>
+            <field name="subject">Demande de congé de {{ object.employee_id.name }} — {{ object.holiday_status_id.name }}</field>
+            <field name="email_to">{{ object.employee_id.portail_leave_validator_id.work_email }}</field>
+            <field name="auto_delete" eval="False"/>
+            <field name="body_html" type="html">
+<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+    <p>Bonjour <t t-out="object.employee_id.portail_leave_validator_id.name"/>,</p>
+    <p><strong t-out="object.employee_id.name"/> vient de soumettre une demande de congé :</p>
+    <ul>
+        <li>Type : <strong t-out="object.holiday_status_id.name"/></li>
+        <li>Période : du <strong t-out="format_date(object.request_date_from)"/> au <strong t-out="format_date(object.request_date_to)"/></li>
+        <li t-if="object.private_name">Motif : <t t-out="object.private_name"/></li>
+    </ul>
+    <p t-if="object.state == 'validate'" style="color: #666;">
+        Ce type de congé est validé automatiquement — cet email vous est envoyé pour information.
+    </p>
+    <p t-else="">La demande est <strong>en attente de votre décision</strong>.</p>
+    <p style="margin: 16px 0;">
+        <a t-attf-href="#{object.get_base_url()}/my/team/leaves/#{object.id}"
+           style="background: #714B67; color: #fff; padding: 10px 18px; border-radius: 4px; text-decoration: none;">
+            Voir la demande et statuer
+        </a>
+    </p>
+</div>
+            </field>
+        </record>
+
+        <!-- 2) À l'employé : sa demande a été approuvée ou refusée -->
+        <record id="mail_template_leave_decided" model="mail.template">
+            <field name="name">Portail congés : décision (employé)</field>
+            <field name="model_id" ref="hr_holidays.model_hr_leave"/>
+            <field name="subject">Votre demande de congé du {{ format_date(object.request_date_from) }} a été {{ 'approuvée' if object.state == 'validate' else 'refusée' }}</field>
+            <field name="email_to">{{ object.employee_id.work_email }}</field>
+            <field name="auto_delete" eval="False"/>
+            <field name="body_html" type="html">
+<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+    <p>Bonjour <t t-out="object.employee_id.name"/>,</p>
+    <p t-if="object.state == 'validate'">
+        Votre demande de congé (<t t-out="object.holiday_status_id.name"/>,
+        du <strong t-out="format_date(object.request_date_from)"/>
+        au <strong t-out="format_date(object.request_date_to)"/>) a été
+        <strong style="color: #28a745;">approuvée</strong>
+        par <t t-out="object.employee_id.portail_leave_validator_id.name"/>.
+    </p>
+    <p t-else="">
+        Votre demande de congé (<t t-out="object.holiday_status_id.name"/>,
+        du <strong t-out="format_date(object.request_date_from)"/>
+        au <strong t-out="format_date(object.request_date_to)"/>) a été
+        <strong style="color: #dc3545;">refusée</strong>
+        par <t t-out="object.employee_id.portail_leave_validator_id.name"/>.
+    </p>
+    <p t-if="object.portail_decision_note">
+        Commentaire : <em t-out="object.portail_decision_note"/>
+    </p>
+    <p style="margin: 16px 0;">
+        <a t-attf-href="#{object.get_base_url()}/my/leaves"
+           style="background: #714B67; color: #fff; padding: 10px 18px; border-radius: 4px; text-decoration: none;">
+            Voir mes congés
+        </a>
+    </p>
+</div>
+            </field>
+        </record>
+
+    </data>
+</odoo>
