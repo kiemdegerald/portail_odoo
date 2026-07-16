@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Case « Proposé sur le portail » + libellé, sur le type de congé -->
+    <record id="edit_holiday_status_form_portail" model="ir.ui.view">
+        <field name="name">hr.leave.type.form.portail</field>
+        <field name="model">hr.leave.type</field>
+        <field name="inherit_id" ref="hr_holidays.edit_holiday_status_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='support_document']" position="after">
+                <field name="portail_published"/>
+                <field name="portail_label" invisible="not portail_published"
+                       placeholder="Par défaut : le nom du type"/>
+                <field name="portail_allow_past_dates" invisible="not portail_published"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>
