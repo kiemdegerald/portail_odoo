@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================ Formulaire ============================ -->
+    <record id="view_gm_mission_form" model="ir.ui.view">
+        <field name="name">gm.mission.form</field>
+        <field name="model">gm.mission</field>
+        <field name="arch" type="xml">
+            <form string="Ordre de mission">
+                <header>
+                    <button name="action_submit" type="object" string="Soumettre"
+                            class="btn-primary" invisible="state != 'draft'"/>
+                    <button name="action_approve_step" type="object"
+                            string="Approuver l'étape" class="btn-primary"
+                            invisible="not can_decide"
+                            confirm="Approuver l'étape en cours ?"/>
+                    <button name="%(gestion_mission.action_gm_decision_refuse)d"
+                            type="action" string="Refuser"
+                            invisible="not can_decide"/>
+                    <button name="%(gestion_mission.action_gm_decision_send_back)d"
+                            type="action" string="Renvoyer pour correction"
+                            invisible="not can_decide"/>
+                    <button name="action_reset_to_draft" type="object"
+                            string="Remettre en brouillon"
+                            invisible="not can_reset"/>
+                    <button name="%(gestion_mission.action_report_gm_ordre_mission)d"
+                            type="action" string="Imprimer l'ordre de mission"
+                            invisible="state != 'validated'"/>
+                    <button name="%(gestion_mission.action_report_gm_decompte)d"
+                            type="action" string="Imprimer la fiche de décompte"
+                            invisible="state != 'validated'"/>
+                    <field name="can_decide" invisible="1"/>
+                    <field name="can_reset" invisible="1"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,submitted,validated"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group string="Demandeur">
+                            <field name="employee_id"
+                                   readonly="state != 'draft'"
+                                   options="{'no_create': True}"/>
+                            <field name="department_id"/>
+                            <field name="job_title"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                        <group string="Mission">
+                            <field name="objet" readonly="state != 'draft'"/>
+                            <field name="destination" readonly="state != 'draft'"/>
+                            <field name="zone_id" readonly="state != 'draft'" options="{'no_create': True}"/>
+                            <field name="transport" readonly="state != 'draft'"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group string="Période">
+                            <field name="date_depart" readonly="state != 'draft'"/>
+                            <field name="date_retour" readonly="state != 'draft'"/>
+                            <field name="duration"/>
+                        </group>
+                        <group string="Suivi" invisible="state != 'refused'">
+                            <field name="refusal_reason"/>
+                        </group>
+                    </group>
+                    <group string="Indemnités" name="indemnites">
+                        <group>
+                            <field name="is_gm_manager" invisible="1"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="categorie_agent"
+                                   invisible="state == 'draft'"/>
+                            <field name="indemnite_jour"
+                                   invisible="state == 'draft'"/>
+                            <field name="indemnite_total"
+                                   invisible="state == 'draft'"/>
+                            <field name="autres_frais"/>
+                            <field name="total_du"
+                                   invisible="state == 'draft'"/>
+                        </group>
+                        <group>
+                            <field name="avance_montant"
+                                   invisible="state == 'draft'"
+                                   readonly="avance_versee or not is_gm_manager"/>
+                            <field name="avance_versee"
+                                   invisible="state != 'validated' or not is_gm_manager"/>
+                            <field name="solde"
+                                   invisible="state == 'draft'"/>
+                        </group>
+                    </group>
+                    <group string="Précisions">
+                        <field name="description" nolabel="1" colspan="2"
+                               readonly="state != 'draft'"
+                               placeholder="Contexte, participants, programme prévisionnel..."/>
+                    </group>
+                    <notebook>
+                        <page string="Autres frais (à justifier)" name="frais">
+                            <field name="frais_ids"
+                                   readonly="avance_versee or (state != 'draft' and not is_gm_manager)">
+                                <tree editable="bottom">
+                                    <field name="description"/>
+                                    <field name="montant"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                </tree>
+                            </field>
+                            <group class="oe_subtotal_footer">
+                                <field name="autres_frais" readonly="1"/>
+                            </group>
+                        </page>
+                        <page string="Circuit de validation" name="validation"
+                              invisible="not validation_line_ids">
+                            <field name="validation_line_ids" readonly="1">
+                                <tree decoration-success="state == 'approved'"
+                                      decoration-danger="state == 'refused'"
+                                      decoration-info="state == 'pending'"
+                                      decoration-muted="state == 'waiting'">
+                                    <field name="sequence" column_invisible="1"/>
+                                    <field name="name"/>
+                                    <field name="validator_id"/>
+                                    <field name="state" widget="badge"
+                                           decoration-success="state == 'approved'"
+                                           decoration-danger="state == 'refused'"
+                                           decoration-info="state == 'pending'"/>
+                                    <field name="acted_by_id"/>
+                                    <field name="date_action"/>
+                                    <field name="comment"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================== Liste ============================== -->
+    <record id="view_gm_mission_tree" model="ir.ui.view">
+        <field name="name">gm.mission.tree</field>
+        <field name="model">gm.mission</field>
+        <field name="arch" type="xml">
+            <tree string="Missions"
+                  decoration-info="state == 'submitted'"
+                  decoration-success="state == 'validated'"
+                  decoration-danger="state == 'refused'"
+                  decoration-muted="state == 'draft'">
+                <field name="name"/>
+                <field name="employee_id"/>
+                <field name="objet"/>
+                <field name="destination"/>
+                <field name="zone_id" optional="show"/>
+                <field name="date_depart"/>
+                <field name="date_retour"/>
+                <field name="duration" optional="show"/>
+                <field name="company_id" optional="show"
+                       groups="base.group_multi_company"/>
+                <field name="current_validator_id" optional="show"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'submitted'"
+                       decoration-success="state == 'validated'"
+                       decoration-danger="state == 'refused'"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ============================ Recherche ============================ -->
+    <record id="view_gm_mission_search" model="ir.ui.view">
+        <field name="name">gm.mission.search</field>
+        <field name="model">gm.mission</field>
+        <field name="arch" type="xml">
+            <search string="Missions">
+                <field name="name"/>
+                <field name="employee_id"/>
+                <field name="objet"/>
+                <field name="destination"/>
+                <filter string="À traiter" name="submitted"
+                        domain="[('state', '=', 'submitted')]"/>
+                <filter string="Validées" name="validated"
+                        domain="[('state', '=', 'validated')]"/>
+                <filter string="Refusées" name="refused"
+                        domain="[('state', '=', 'refused')]"/>
+                <separator/>
+                <filter string="Mes demandes" name="my"
+                        domain="[('employee_id.user_id', '=', uid)]"/>
+                <filter string="À valider par moi" name="to_validate_by_me"
+                        domain="[('state', '=', 'submitted'),
+                                 ('current_validator_id.user_id', '=', uid)]"/>
+                <group expand="0" string="Regrouper par">
+                    <filter string="Statut" name="group_state"
+                            context="{'group_by': 'state'}"/>
+                    <filter string="Demandeur" name="group_employee"
+                            context="{'group_by': 'employee_id'}"/>
+                    <filter string="Zone" name="group_zone"
+                            context="{'group_by': 'zone_id'}"/>
+                    <filter string="Société" name="group_company"
+                            context="{'group_by': 'company_id'}"
+                            groups="base.group_multi_company"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ========================= Action et menus ========================= -->
+    <record id="action_gm_mission" model="ir.actions.act_window">
+        <field name="name">Missions</field>
+        <field name="res_model">gm.mission</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Créez votre première demande de mission
+            </p>
+            <p>
+                Renseignez l'objet, la destination et les dates, puis
+                soumettez la demande pour validation.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_gm_root" name="Missions"
+              web_icon="gestion_mission,static/description/icon.png"
+              sequence="76"/>
+    <menuitem id="menu_gm_mission" name="Missions"
+              parent="menu_gm_root" action="action_gm_mission" sequence="10"/>
+    <menuitem id="menu_gm_config" name="Configuration"
+              parent="menu_gm_root" sequence="90"
+              groups="gestion_mission.group_gm_manager"/>
+
+</odoo>

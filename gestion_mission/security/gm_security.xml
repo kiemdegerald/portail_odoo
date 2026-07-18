@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="module_category_gestion_mission" model="ir.module.category">
+        <field name="name">Gestion des Missions</field>
+        <field name="sequence">25</field>
+    </record>
+
+    <!-- Utilisateur : voit et gère SES demandes de mission -->
+    <record id="group_gm_user" model="res.groups">
+        <field name="name">Utilisateur</field>
+        <field name="category_id" ref="module_category_gestion_mission"/>
+        <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <!-- Gestionnaire : RH/administration — toutes les missions + configuration -->
+    <record id="group_gm_manager" model="res.groups">
+        <field name="name">Gestionnaire</field>
+        <field name="category_id" ref="module_category_gestion_mission"/>
+        <field name="implied_ids" eval="[(4, ref('group_gm_user'))]"/>
+        <field name="users" eval="[(4, ref('base.user_admin'))]"/>
+    </record>
+
+    <!-- Périmètre : un utilisateur voit ses propres missions ET celles
+         dont il est un valideur du circuit (pour pouvoir statuer dans le
+         backend s'il a une licence interne). -->
+    <record id="rule_gm_mission_user_own" model="ir.rule">
+        <field name="name">Missions : ses demandes + celles à valider</field>
+        <field name="model_id" ref="model_gm_mission"/>
+        <field name="domain_force">['|',
+            ('employee_id.user_id', '=', user.id),
+            ('validation_line_ids.validator_id.user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_gm_user'))]"/>
+    </record>
+
+    <!-- Les lignes du circuit suivent le même périmètre -->
+    <record id="rule_gm_mission_validation_user" model="ir.rule">
+        <field name="name">Étapes de validation : périmètre utilisateur</field>
+        <field name="model_id" ref="model_gm_mission_validation"/>
+        <field name="domain_force">['|',
+            ('mission_id.employee_id.user_id', '=', user.id),
+            ('mission_id.validation_line_ids.validator_id.user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_gm_user'))]"/>
+    </record>
+    <record id="rule_gm_mission_validation_manager" model="ir.rule">
+        <field name="name">Étapes de validation : toutes (gestionnaire)</field>
+        <field name="model_id" ref="model_gm_mission_validation"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('group_gm_manager'))]"/>
+    </record>
+
+    <!-- ... le gestionnaire les voit toutes (sa règle prime, OR entre groupes) -->
+    <record id="rule_gm_mission_manager_all" model="ir.rule">
+        <field name="name">Missions : toutes (gestionnaire)</field>
+        <field name="model_id" ref="model_gm_mission"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('group_gm_manager'))]"/>
+    </record>
+
+
+    <!-- Les lignes de frais suivent le périmètre des missions -->
+    <record id="rule_gm_mission_frais_user" model="ir.rule">
+        <field name="name">Frais de mission : périmètre utilisateur</field>
+        <field name="model_id" ref="model_gm_mission_frais"/>
+        <field name="domain_force">['|',
+            ('mission_id.employee_id.user_id', '=', user.id),
+            ('mission_id.validation_line_ids.validator_id.user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_gm_user'))]"/>
+    </record>
+    <record id="rule_gm_mission_frais_manager" model="ir.rule">
+        <field name="name">Frais de mission : tous (gestionnaire)</field>
+        <field name="model_id" ref="model_gm_mission_frais"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('group_gm_manager'))]"/>
+    </record>
+
+</odoo>

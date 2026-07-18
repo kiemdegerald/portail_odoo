@@ -1,0 +1,14 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_gm_mission_user,gm.mission.user,model_gm_mission,group_gm_user,1,1,1,0
+access_gm_mission_manager,gm.mission.manager,model_gm_mission,group_gm_manager,1,1,1,1
+access_gm_validation_step_user,gm.validation.step.user,model_gm_validation_step,group_gm_user,1,0,0,0
+access_gm_validation_step_manager,gm.validation.step.manager,model_gm_validation_step,group_gm_manager,1,1,1,1
+access_gm_mission_validation_user,gm.mission.validation.user,model_gm_mission_validation,group_gm_user,1,0,0,0
+access_gm_mission_validation_manager,gm.mission.validation.manager,model_gm_mission_validation,group_gm_manager,1,1,1,1
+access_gm_decision_wizard_user,gm.decision.wizard.user,model_gm_decision_wizard,group_gm_user,1,1,1,1
+access_gm_perdiem_rate_user,gm.perdiem.rate.user,model_gm_perdiem_rate,group_gm_user,1,0,0,0
+access_gm_perdiem_rate_manager,gm.perdiem.rate.manager,model_gm_perdiem_rate,group_gm_manager,1,1,1,1
+access_gm_mission_zone_user,gm.mission.zone.user,model_gm_mission_zone,group_gm_user,1,0,0,0
+access_gm_mission_zone_manager,gm.mission.zone.manager,model_gm_mission_zone,group_gm_manager,1,1,1,1
+access_gm_mission_frais_user,gm.mission.frais.user,model_gm_mission_frais,group_gm_user,1,1,1,1
+access_gm_mission_frais_manager,gm.mission.frais.manager,model_gm_mission_frais,group_gm_manager,1,1,1,1
