@@ -1,13 +1,65 @@
-# Portail Employé (Odoo 17)
+# Portail Employé — Odoo 17 (module `portail`)
 
-Espace self-service RH pour les employés, via des utilisateurs **Portail**
-(gratuits, sans licence interne) : bulletins de paie, demandes de congés et
-circuit d'approbation, directement depuis le site web de l'entreprise.
+Espace **self-service RH** pour les employés, via des utilisateurs Portail
+(gratuits, sans licence interne). Développé par LICELI Technologies.
 
 ## Fonctionnalités
-- Bulletins de paie : consultation et téléchargement PDF
-- Demandes de congé depuis le site web (formulaire sécurisé)
-- Suivi, modification et annulation de ses demandes
-- Espace validateur : approbation/refus avec commentaire obligatoire
-- Validateur de congés désigné par employé (indépendant du manager)
-- Notifications email du circuit (validateur et employé)
+
+### Côté employé
+- **Bulletins de paie** : consultation et téléchargement PDF sécurisés
+- **Demandes de congé** depuis le site web : types configurables, motif,
+  justificatifs multiples (PDF, images, Word — validés par contenu binaire)
+- **Suivi complet** : solde par type, historique, modification/annulation
+  d'une demande en attente, aperçu et gestion des justificatifs
+- **Notifications email** : décision (approuvée/refusée) avec le commentaire
+- Page « Mes informations » épurée : identité gérée par les RH,
+  suppression de compte désactivée
+
+### Côté validateur
+- Champ **« Validateur congés »** sur la fiche employé (indépendant du manager)
+- Espace « Congés de mon équipe » : consultation, justificatifs,
+  **décision avec commentaire obligatoire**, tracée au chatter
+- Notification email à chaque nouvelle demande
+
+### Côté RH / administration
+- Types de congé publiés sur le portail par simple case à cocher
+  (libellé site personnalisable, autorisation des dates passées par type)
+- Adresse de notification RH pilotée par paramètre système
+- Modèles d'email modifiables dans l'interface
+- Justificatifs visibles dans le backend à tout état de la demande
+- Alerte calendrier : participant invité déjà en congé approuvé
+
+## Sécurité
+- Rattachement employé ↔ compte portail par le contact professionnel ;
+  lectures `sudo()` uniquement après restriction du domaine (aucune ACL RH ouverte)
+- Anti-usurpation : chacun ne soumet que pour lui-même
+- Fichiers validés par **signature binaire** (jamais par extension) ;
+  aperçu inline limité aux formats sûrs (anti-XSS stocké)
+- Verrous serveur systématiques derrière chaque restriction d'interface
+
+## Architecture
+```
+portail/
+├── controllers/
+│   ├── portal_common.py     # socle partagé (sécurité, helpers)
+│   ├── portal_payslip.py    # bulletins
+│   ├── portal_leave.py      # congés employé
+│   ├── portal_team.py       # espace validateur
+│   ├── portal_account.py    # mes informations
+│   └── website_form.py      # formulaire du site
+├── models/                  # hr.employee, hr.leave, hr.leave.type, ...
+├── views/                   # un fichier de templates par domaine
+└── data/                    # page website embarquée, modèles d'email
+```
+Conçu comme **socle d'une famille de modules** : les domaines suivants
+(missions, évaluations...) s'ajoutent en modules séparés dépendant de celui-ci.
+
+## Installation
+1. Placer `portail/` dans le `addons_path`
+2. Installer le module (la page web, le menu et les réglages par défaut
+   sont créés automatiquement)
+3. Configurer : adresse RH (`portail.email_notification_rh`), types de
+   congé à publier, validateurs sur les fiches employés
+
+**Prérequis** : Odoo 17 Enterprise (hr_payroll), modules `hr_leave_documents`
+et `custom_salary_reports` de l'écosystème LICELI.
