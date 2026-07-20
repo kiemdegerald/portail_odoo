@@ -1,7 +1,6 @@
 # Portail Employé — Odoo 17 (module `portail`)
 
-Espace **self-service RH** pour les employés, via des utilisateurs Portail
-(gratuits, sans licence interne). Développé par LICELI Technologies.
+Espace **self-service RH** pour les employés, via des utilisateurs Portail. Développé par LICELI Technologies.
 
 ## Fonctionnalités
 
