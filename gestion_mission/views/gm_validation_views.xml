@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Configuration RH : les niveaux du circuit de validation.
+         Liste éditable, réordonnable par glisser-déposer. -->
+    <record id="view_gm_validation_step_tree" model="ir.ui.view">
+        <field name="name">gm.validation.step.tree</field>
+        <field name="model">gm.validation.step</field>
+        <field name="arch" type="xml">
+            <tree string="Circuit de validation" editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="validator_type"/>
+                <field name="validator_id"
+                       required="validator_type == 'fixed'"
+                       invisible="validator_type != 'fixed'"
+                       options="{'no_create': True}"/>
+                <field name="company_id" groups="base.group_multi_company"
+                       options="{'no_create': True}"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_gm_validation_step" model="ir.actions.act_window">
+        <field name="name">Circuit de validation</field>
+        <field name="res_model">gm.validation.step</field>
+        <field name="view_mode">tree</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Définissez les niveaux de validation des missions
+            </p>
+            <p>
+                Les demandes suivront ces niveaux, dans l'ordre. Chaque
+                mission photographie le circuit au moment de sa soumission :
+                modifier cette liste n'affecte pas les demandes déjà en cours.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_gm_validation_step" name="Circuit de validation"
+              parent="menu_gm_config" action="action_gm_validation_step"
+              sequence="10"/>
+
+    <!-- Ouverture de la fenêtre de décision depuis le formulaire mission -->
+    <record id="action_gm_decision_refuse" model="ir.actions.act_window">
+        <field name="name">Refuser la demande</field>
+        <field name="res_model">gm.decision.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="context">{'default_mission_id': active_id, 'default_action': 'refuse'}</field>
+    </record>
+    <record id="action_gm_decision_send_back" model="ir.actions.act_window">
+        <field name="name">Renvoyer pour correction</field>
+        <field name="res_model">gm.decision.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="context">{'default_mission_id': active_id, 'default_action': 'send_back'}</field>
+    </record>
+
+    <!-- Fenêtre de décision (refus / renvoi : commentaire obligatoire) -->
+    <record id="view_gm_decision_wizard_form" model="ir.ui.view">
+        <field name="name">gm.decision.wizard.form</field>
+        <field name="model">gm.decision.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Décision">
+                <group>
+                    <field name="mission_id" invisible="1"/>
+                    <field name="action"/>
+                    <field name="comment"
+                           placeholder="Obligatoire — visible par le demandeur."/>
+                </group>
+                <footer>
+                    <button name="action_confirm" type="object"
+                            string="Confirmer" class="btn-primary"/>
+                    <button string="Annuler" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+
+    <record id="view_gm_validation_step_search" model="ir.ui.view">
+        <field name="name">gm.validation.step.search</field>
+        <field name="model">gm.validation.step</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <filter string="Archivé" name="inactive"
+                        domain="[('active', '=', False)]"/>
+            </search>
+        </field>
+    </record>
+
+</odoo>
