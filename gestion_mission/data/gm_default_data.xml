@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Circuit par défaut à l'installation : 1 niveau (le supérieur
+         hiérarchique). Les RH le complètent/modifient ensuite dans
+         Missions > Configuration > Circuit de validation.
+         noupdate : leurs modifications ne sont jamais écrasées. -->
+    <data noupdate="1">
+        <!-- % de l'avance proposée avant départ (part du total dû).
+             Pré-créé pour être VISIBLE et modifiable par les RH :
+             Paramètres > Technique > Paramètres système > gm.avance_pct -->
+        <record id="param_avance_pct" model="ir.config_parameter">
+            <field name="key">gm.avance_pct</field>
+            <field name="value">100</field>
+        </record>
+
+        <record id="step_default_manager" model="gm.validation.step">
+            <field name="sequence">10</field>
+            <field name="name">Supérieur hiérarchique</field>
+            <field name="validator_type">manager</field>
+            <field name="company_id" eval="False"/>
+        </record>
+
+
+        <!-- Zones de mission par défaut (référentiel configurable :
+             Missions > Configuration > Zones de mission) -->
+        <record id="zone_national" model="gm.mission.zone">
+            <field name="name">Nationale (Burkina Faso)</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="zone_uemoa" model="gm.mission.zone">
+            <field name="name">Régionale (UEMOA)</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="zone_international" model="gm.mission.zone">
+            <field name="name">Internationale</field>
+            <field name="sequence">30</field>
+        </record>
+
+        <!-- Barème par défaut (montants PROVISOIRES calés sur l'ordre de
+             mission réel N°050/2026 : ~160 000 F/j en UEMOA pour un cadre
+             supérieur). Les RH fixent les vrais montants dans
+             Missions > Configuration > Barème des indemnités. -->
+        <record id="rate_nat_exec" model="gm.perdiem.rate">
+            <field name="zone_id" ref="zone_national"/>
+            <field name="categorie">Agent d'execution</field>
+            <field name="montant_jour">40000</field>
+        </record>
+        <record id="rate_nat_moyen" model="gm.perdiem.rate">
+            <field name="zone_id" ref="zone_national"/>
+            <field name="categorie">Cadre moyen</field>
+            <field name="montant_jour">60000</field>
+        </record>
+        <record id="rate_nat_sup" model="gm.perdiem.rate">
+            <field name="zone_id" ref="zone_national"/>
+            <field name="categorie">Cadre supérieur</field>
+            <field name="montant_jour">80000</field>
+        </record>
+        <record id="rate_uemoa_exec" model="gm.perdiem.rate">
+            <field name="zone_id" ref="zone_uemoa"/>
+            <field name="categorie">Agent d'execution</field>
+            <field name="montant_jour">80000</field>
+        </record>
+        <record id="rate_uemoa_moyen" model="gm.perdiem.rate">
+            <field name="zone_id" ref="zone_uemoa"/>
+            <field name="categorie">Cadre moyen</field>
+            <field name="montant_jour">120000</field>
+        </record>
+        <record id="rate_uemoa_sup" model="gm.perdiem.rate">
+            <field name="zone_id" ref="zone_uemoa"/>
+            <field name="categorie">Cadre supérieur</field>
+            <field name="montant_jour">160000</field>
+        </record>
+        <record id="rate_int_exec" model="gm.perdiem.rate">
+            <field name="zone_id" ref="zone_international"/>
+            <field name="categorie">Agent d'execution</field>
+            <field name="montant_jour">120000</field>
+        </record>
+        <record id="rate_int_moyen" model="gm.perdiem.rate">
+            <field name="zone_id" ref="zone_international"/>
+            <field name="categorie">Cadre moyen</field>
+            <field name="montant_jour">180000</field>
+        </record>
+        <record id="rate_int_sup" model="gm.perdiem.rate">
+            <field name="zone_id" ref="zone_international"/>
+            <field name="categorie">Cadre supérieur</field>
+            <field name="montant_jour">240000</field>
+        </record>
+    </data>
+</odoo>

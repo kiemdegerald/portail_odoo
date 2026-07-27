@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Barème des indemnités journalières (configuration RH) -->
+    <record id="view_gm_perdiem_rate_tree" model="ir.ui.view">
+        <field name="name">gm.perdiem.rate.tree</field>
+        <field name="model">gm.perdiem.rate</field>
+        <field name="arch" type="xml">
+            <tree string="Barème des indemnités" editable="bottom">
+                <field name="zone_id" options="{'no_create': True}"/>
+                <field name="categorie"/>
+                <field name="montant_jour"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="company_id" groups="base.group_multi_company"
+                       options="{'no_create': True}"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_gm_perdiem_rate" model="ir.actions.act_window">
+        <field name="name">Barème des indemnités</field>
+        <field name="res_model">gm.perdiem.rate</field>
+        <field name="view_mode">tree</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Définissez les indemnités journalières de mission
+            </p>
+            <p>
+                Un montant par jour, pour chaque combinaison zone de mission
+                × catégorie d'agent (les catégories proviennent de la grille
+                salariale). Les montants sont figés sur chaque demande au
+                moment de sa soumission.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_gm_perdiem_rate" name="Barème des indemnités"
+              parent="menu_gm_config" action="action_gm_perdiem_rate"
+              sequence="20"/>
+
+
+    <!-- Zones de mission (référentiel configurable) -->
+    <record id="view_gm_mission_zone_tree" model="ir.ui.view">
+        <field name="name">gm.mission.zone.tree</field>
+        <field name="model">gm.mission.zone</field>
+        <field name="arch" type="xml">
+            <tree string="Zones de mission" editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_gm_mission_zone" model="ir.actions.act_window">
+        <field name="name">Zones de mission</field>
+        <field name="res_model">gm.mission.zone</field>
+        <field name="view_mode">tree</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Définissez les zones de mission
+            </p>
+            <p>
+                Chaque zone (nationale, sous-région, international...) porte
+                ses propres montants dans le barème des indemnités.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_gm_mission_zone" name="Zones de mission"
+              parent="menu_gm_config" action="action_gm_mission_zone"
+              sequence="15"/>
+
+
+    <!-- Vues de recherche : rendre le filtre « Archivé » disponible -->
+    <record id="view_gm_mission_zone_search" model="ir.ui.view">
+        <field name="name">gm.mission.zone.search</field>
+        <field name="model">gm.mission.zone</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <filter string="Archivé" name="inactive"
+                        domain="[('active', '=', False)]"/>
+            </search>
+        </field>
+    </record>
+    <record id="view_gm_perdiem_rate_search" model="ir.ui.view">
+        <field name="name">gm.perdiem.rate.search</field>
+        <field name="model">gm.perdiem.rate</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="zone_id"/>
+                <field name="categorie"/>
+                <filter string="Archivé" name="inactive"
+                        domain="[('active', '=', False)]"/>
+            </search>
+        </field>
+    </record>
+
+</odoo>
