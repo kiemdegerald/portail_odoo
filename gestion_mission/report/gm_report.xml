@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Les deux documents officiels, imprimables UNIQUEMENT depuis les
+         boutons du formulaire (visibles quand la mission est validée) :
+         pas de binding au menu Imprimer, pour qu'on ne puisse pas sortir
+         un ordre de mission « Brouillon ». -->
+    <record id="action_report_gm_ordre_mission" model="ir.actions.report">
+        <field name="name">Ordre de mission</field>
+        <field name="model">gm.mission</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">gestion_mission.report_gm_ordre_mission</field>
+        <field name="report_file">gestion_mission.report_gm_ordre_mission</field>
+        <field name="print_report_name">'Ordre de mission %s' % (object.name or '').replace('/', '-')</field>
+    </record>
+
+    <record id="action_report_gm_decompte" model="ir.actions.report">
+        <field name="name">Fiche de décompte</field>
+        <field name="model">gm.mission</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">gestion_mission.report_gm_decompte</field>
+        <field name="report_file">gestion_mission.report_gm_decompte</field>
+        <field name="print_report_name">'Fiche de decompte %s' % (object.name or '').replace('/', '-')</field>
+    </record>
+
+</odoo>

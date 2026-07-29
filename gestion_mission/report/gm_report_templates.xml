@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- NB wkhtmltopdf (qt patché) ne rend ni les colonnes Bootstrap
+         (flexbox) ni toujours les bordures de .table-bordered : bordures
+         et alignements sont donc posés en styles INLINE, seule méthode
+         fiable à l'impression. -->
+
+    <!-- ==================================================================
+         Bloc commun aux deux documents (cf. ODM réel N°050/2026/BADF) :
+         tableau du membre de la mission + informations de la mission.
+         ================================================================== -->
+    <template id="gm_report_mission_infos">
+        <p class="mb-1"><strong>Membre de la mission :</strong></p>
+        <p class="fst-italic mb-1">Personne concernée et fonction</p>
+        <table style="border-collapse: collapse; width: 100%; margin-bottom: 12px;">
+            <thead>
+                <tr>
+                    <th style="border: 1px solid black; padding: 4px; width: 8%; text-align: center;">N°</th>
+                    <th style="border: 1px solid black; padding: 4px; text-align: center;">Nom et Prénom</th>
+                    <th style="border: 1px solid black; padding: 4px; text-align: center;">Fonction</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="border: 1px solid black; padding: 4px; text-align: center;">01</td>
+                    <td style="border: 1px solid black; padding: 4px;"><span t-field="doc.employee_id.name"/></td>
+                    <td style="border: 1px solid black; padding: 4px;"><t t-out="doc.job_title or ''"/></td>
+                </tr>
+            </tbody>
+        </table>
+        <p class="mb-1"><strong>Lieu :</strong> <span t-field="doc.destination"/></p>
+        <p class="mb-1"><strong>Motif :</strong> <span t-field="doc.objet"/></p>
+        <p class="mb-1"><strong>Date de départ prévue :</strong> <span t-out="doc.date_depart and doc.date_depart.strftime('%d/%m/%Y') or ''"/></p>
+        <p class="mb-1"><strong>Date de retour prévue :</strong> <span t-out="doc.date_retour and doc.date_retour.strftime('%d/%m/%Y') or ''"/></p>
+        <p class="mb-1"><strong>Nombre de jours prévus :</strong> <t t-out="'%02d' % doc.duration"/> jour<t t-if="doc.duration &gt; 1">s</t></p>
+        <p class="mb-1"><strong>Moyen de déplacement :</strong> <t t-out="dict(doc._fields['transport'].selection).get(doc.transport, '')"/></p>
+    </template>
+
+    <!-- Bloc signature (à droite, comme sur le document réel) : ville de
+         la société, place pour la date et la signature du DG. -->
+    <template id="gm_report_signature">
+        <div style="margin-top: 40px; margin-left: 50%; width: 50%; text-align: center;">
+            <p><t t-out="doc.company_id.city or 'Ouagadougou'"/>,
+               le ______________________</p>
+            <div style="height: 70px;"/>
+            <t t-if="doc.company_id.gm_dg_name">
+                <p class="fw-bold mb-0"><t t-out="doc.company_id.gm_dg_name"/></p>
+                <p class="fw-bold mb-0">Directeur Général</p>
+            </t>
+            <p t-else="" class="fw-bold mb-0">Le Directeur Général</p>
+        </div>
+    </template>
+
+    <!-- ==================================================================
+         Document 1 : ORDRE DE MISSION
+         ================================================================== -->
+    <template id="report_gm_ordre_mission">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="doc">
+                <t t-call="web.external_layout">
+                    <div class="page">
+                        <h4 class="text-center fw-bold text-decoration-underline mt-3 mb-4">
+                            ORDRE DE MISSION N°<span t-field="doc.name"/>
+                        </h4>
+                        <t t-call="gestion_mission.gm_report_mission_infos"/>
+                        <t t-call="gestion_mission.gm_report_signature"/>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+
+    <!-- ==================================================================
+         Document 2 : FICHE DE DÉCOMPTE DES FRAIS DE MISSION
+         ================================================================== -->
+    <template id="report_gm_decompte">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="doc">
+                <t t-call="web.external_layout">
+                    <div class="page">
+                        <h4 class="text-center fw-bold text-decoration-underline mt-3 mb-2">
+                            FICHE DE DECOMPTE DES FRAIS DE MISSION
+                        </h4>
+                        <p class="fw-bold mb-3">Réf. OM : N°<span t-field="doc.name"/></p>
+                        <t t-call="gestion_mission.gm_report_mission_infos"/>
+
+                        <table style="border-collapse: collapse; width: 100%; margin-top: 16px; margin-bottom: 8px;">
+                            <thead>
+                                <tr>
+                                    <th rowspan="2" style="border: 1px solid black; padding: 4px; text-align: center; vertical-align: middle; width: 34%;">Nom et Prénom(s)</th>
+                                    <th colspan="3" style="border: 1px solid black; padding: 4px; text-align: center;">Total reçu par missionnaire</th>
+                                </tr>
+                                <tr>
+                                    <th style="border: 1px solid black; padding: 4px; text-align: center;">Perdiems<br/>(<t t-out="'%02d' % doc.duration"/> jours)</th>
+                                    <th style="border: 1px solid black; padding: 4px; text-align: center;">Autres frais<br/>(à justifier)</th>
+                                    <th style="border: 1px solid black; padding: 4px; text-align: center;">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="border: 1px solid black; padding: 4px;"><span t-field="doc.employee_id.name"/></td>
+                                    <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="doc.indemnite_total"
+                                              t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
+                                    <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="doc.autres_frais"
+                                              t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
+                                    <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="doc.total_du"
+                                              t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
+                                </tr>
+                                <tr class="fw-bold">
+                                    <td style="border: 1px solid black; padding: 4px;">TOTAL PAR RUBRIQUE</td>
+                                    <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="doc.indemnite_total"
+                                              t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
+                                    <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="doc.autres_frais"
+                                              t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
+                                    <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="doc.total_du"
+                                              t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <p class="fst-italic mb-1">*Autres frais :
+                            <t t-if="not doc.frais_ids">-</t>
+                        </p>
+                        <ul t-if="doc.frais_ids" class="fst-italic">
+                            <li t-foreach="doc.frais_ids" t-as="frais">
+                                <span t-field="frais.description"/> :
+                                <span t-field="frais.montant"
+                                      t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/>
+                            </li>
+                        </ul>
+
+                        <t t-call="gestion_mission.gm_report_signature"/>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+
+</odoo>
