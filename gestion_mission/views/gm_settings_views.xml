@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Section « Missions » dans Paramètres généraux -->
+    <record id="res_config_settings_view_form_gm" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.gestion.mission</field>
+        <field name="model">res.config.settings</field>
+        <field name="priority" eval="60"/>
+        <field name="inherit_id" ref="base_setup.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app data-string="Missions" string="Missions"
+                     name="gestion_mission"
+                     logo="/gestion_mission/static/description/icon.png">
+                    <block title="Ordres de mission" name="gm_block">
+                        <setting string="Avance avant départ (%)"
+                                 help="Pourcentage du total dû proposé comme avance à la soumission (0 à 100). Commun à toutes les sociétés.">
+                            <field name="gm_avance_pct" class="o_light_label"
+                                   style="width: 6rem;"/>
+                        </setting>
+                        <setting string="Nom du Directeur Général"
+                                 company_dependent="1"
+                                 help="Imprimé dans le bloc signature de l'ordre de mission et de la fiche de décompte (propre à chaque société). Laisser vide pour n'imprimer que « Le Directeur Général ».">
+                            <field name="gm_dg_name"/>
+                        </setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Raccourci dans Missions > Configuration (réservé aux admins :
+         l'écran Paramètres exige les droits d'administration). -->
+    <record id="action_gm_config_settings" model="ir.actions.act_window">
+        <field name="name">Paramètres</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_mode">form</field>
+        <field name="target">inline</field>
+        <field name="context">{'module': 'gestion_mission'}</field>
+    </record>
+    <menuitem id="menu_gm_settings" name="Paramètres"
+              parent="menu_gm_config" action="action_gm_config_settings"
+              sequence="99" groups="base.group_system"/>
+
+</odoo>
