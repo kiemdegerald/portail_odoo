@@ -1,0 +1,681 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Carte « Missions » sur l'accueil du portail (après les cartes du
+         module portail, priorité 40 > 30) -->
+    <template id="portal_my_home_mission" name="Portail : carte Missions"
+              inherit_id="portal.portal_my_home" priority="40">
+        <xpath expr="//div[hasclass('o_portal_docs')]" position="inside">
+            <t t-call="portal.portal_docs_entry">
+                <t t-set="title">Missions</t>
+                <t t-set="url" t-value="'/my/missions'"/>
+                <t t-set="text">Suivre mes demandes de mission</t>
+                <t t-set="config_card" t-value="True"/>
+                <t t-set="placeholder_count" t-value="'mission_count'"/>
+            </t>
+            <t t-if="portail_is_mission_validator" t-call="portal.portal_docs_entry">
+                <t t-set="title">Missions à valider</t>
+                <t t-set="url" t-value="'/my/team/missions'"/>
+                <t t-set="text">Statuer sur les demandes de mission de mon périmètre</t>
+                <t t-set="config_card" t-value="True"/>
+                <t t-set="placeholder_count" t-value="'team_mission_count'"/>
+            </t>
+        </xpath>
+    </template>
+
+    <!-- Fil d'ariane -->
+    <template id="portal_breadcrumbs_mission" name="Portail : fil d'ariane missions"
+              inherit_id="portal.portal_breadcrumbs" priority="40">
+        <xpath expr="//ol[hasclass('o_portal_submenu')]" position="inside">
+            <li t-if="page_name == 'mission'" class="breadcrumb-item">
+                <a t-if="mission" href="/my/missions">Missions</a>
+                <t t-else="">Missions</t>
+            </li>
+            <li t-if="page_name == 'mission' and mission" class="breadcrumb-item active">
+                <t t-esc="mission.name"/>
+            </li>
+            <li t-if="page_name == 'team_mission'" class="breadcrumb-item">
+                <a t-if="mission" href="/my/team/missions">Missions à valider</a>
+                <t t-else="">Missions à valider</t>
+            </li>
+            <li t-if="page_name == 'team_mission' and mission" class="breadcrumb-item active">
+                <t t-esc="mission.name"/>
+            </li>
+        </xpath>
+    </template>
+
+    <!-- ====================== Liste de mes missions ====================== -->
+    <template id="portal_my_missions" name="Mes missions">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Missions</t>
+            </t>
+
+            <div t-if="success_message" class="alert alert-success mt-3" role="alert">
+                <t t-esc="success_message"/>
+            </div>
+
+            <div class="mt-3 mb-2">
+                <a href="/my/missions/new" class="btn btn-sm btn-primary">
+                    <i class="fa fa-plus"/> Nouvelle demande de mission
+                </a>
+            </div>
+
+            <t t-if="not missions">
+                <div class="alert alert-info mt-3" role="alert">
+                    Aucune demande de mission enregistrée.
+                </div>
+            </t>
+            <t t-if="missions" t-call="portal.portal_table">
+                <thead>
+                    <tr class="active">
+                        <th>Numéro</th>
+                        <th>Objet</th>
+                        <th>Destination</th>
+                        <th>Départ</th>
+                        <th>Retour</th>
+                        <th class="text-end">Jours</th>
+                        <th class="text-center">Statut</th>
+                        <th class="text-end">Détail</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr t-foreach="missions" t-as="m">
+                        <td>
+                            <a t-attf-href="/my/missions/#{m.id}">
+                                <t t-esc="m.name"/>
+                            </a>
+                        </td>
+                        <td><t t-esc="m.objet"/></td>
+                        <td><t t-esc="m.destination"/></td>
+                        <td><span t-field="m.date_depart"/></td>
+                        <td><span t-field="m.date_retour"/></td>
+                        <td class="text-end"><t t-esc="m.duration"/></td>
+                        <td class="text-center">
+                            <span t-if="m.state == 'validated'" class="badge rounded-pill text-bg-success">
+                                <t t-esc="mission_state_labels.get(m.state, m.state)"/>
+                            </span>
+                            <span t-elif="m.state == 'refused'" class="badge rounded-pill text-bg-danger">
+                                <t t-esc="mission_state_labels.get(m.state, m.state)"/>
+                            </span>
+                            <span t-elif="m.state == 'submitted'" class="badge rounded-pill text-bg-info">
+                                <t t-esc="mission_state_labels.get(m.state, m.state)"/>
+                            </span>
+                            <span t-else="" class="badge rounded-pill text-bg-secondary">
+                                <t t-esc="mission_state_labels.get(m.state, m.state)"/>
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            <a t-attf-href="/my/missions/#{m.id}"
+                               class="btn btn-sm btn-primary" title="Voir le détail">
+                                <i class="fa fa-eye"/> Voir
+                            </a>
+                        </td>
+                    </tr>
+                </tbody>
+            </t>
+        </t>
+    </template>
+
+    <!-- ======================= Détail d'une mission ====================== -->
+    <template id="portal_my_mission_detail" name="Ma mission">
+        <t t-call="portal.portal_layout">
+            <div class="row mt-3">
+                <div class="col-12 col-lg-8">
+                    <h4>
+                        Mission <t t-esc="mission.name"/>
+                        <span t-if="mission.state == 'validated'" class="badge rounded-pill text-bg-success ms-2">
+                            <t t-esc="mission_state_labels.get(mission.state)"/>
+                        </span>
+                        <span t-elif="mission.state == 'refused'" class="badge rounded-pill text-bg-danger ms-2">
+                            <t t-esc="mission_state_labels.get(mission.state)"/>
+                        </span>
+                        <span t-elif="mission.state == 'submitted'" class="badge rounded-pill text-bg-info ms-2">
+                            <t t-esc="mission_state_labels.get(mission.state)"/>
+                        </span>
+                        <span t-else="" class="badge rounded-pill text-bg-secondary ms-2">
+                            <t t-esc="mission_state_labels.get(mission.state)"/>
+                        </span>
+                    </h4>
+
+                    <div t-if="success_message" class="alert alert-success" role="alert">
+                        <t t-esc="success_message"/>
+                    </div>
+                    <div t-if="error_message" class="alert alert-danger" role="alert">
+                        <t t-esc="error_message"/>
+                    </div>
+
+                    <!-- Documents officiels (mission validée) : demandeur ET valideurs -->
+                    <div t-if="mission.state == 'validated'" class="mb-3">
+                        <a t-attf-href="/my/missions/#{mission.id}/document/ordre"
+                           class="btn btn-sm btn-primary">
+                            <i class="fa fa-download"/> Ordre de mission (PDF)
+                        </a>
+                        <a t-attf-href="/my/missions/#{mission.id}/document/decompte"
+                           class="btn btn-sm btn-primary">
+                            <i class="fa fa-download"/> Fiche de décompte (PDF)
+                        </a>
+                        <a t-attf-href="/my/missions/#{mission.id}/document/ordre?inline=1"
+                           target="_blank" class="btn btn-sm btn-outline-secondary"
+                           title="Ouvrir l'ordre de mission dans le navigateur">
+                            <i class="fa fa-eye"/> Aperçu
+                        </a>
+                    </div>
+
+                    <!-- Bloc de décision du valideur (étape en cours à son nom) -->
+                    <div t-if="can_decide_now" class="card mb-3">
+                        <div class="card-body">
+                            <h5 class="card-title">Votre décision</h5>
+                            <form t-attf-action="/my/team/missions/#{mission.id}/decide" method="post">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <div class="mb-2">
+                                    <label class="form-label" for="gm_decide_comment">
+                                        Commentaire
+                                        <span class="text-muted small">(obligatoire pour refuser ou renvoyer)</span>
+                                    </label>
+                                    <textarea name="comment" id="gm_decide_comment" class="form-control"
+                                              rows="2" placeholder="Visible par le demandeur."/>
+                                </div>
+                                <button type="submit" name="action" value="approve"
+                                        class="btn btn-sm btn-success"
+                                        onclick="return confirm('Approuver cette étape ?');">
+                                    <i class="fa fa-check"/> Approuver
+                                </button>
+                                <button type="submit" name="action" value="refuse"
+                                        class="btn btn-sm btn-danger"
+                                        onclick="return confirm('Refuser définitivement cette demande ?');">
+                                    <i class="fa fa-times"/> Refuser
+                                </button>
+                                <button type="submit" name="action" value="send_back"
+                                        class="btn btn-sm btn-outline-secondary"
+                                        onclick="return confirm('Renvoyer la demande au demandeur pour correction ?');">
+                                    <i class="fa fa-undo"/> Renvoyer pour correction
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Actions du demandeur selon le statut -->
+                    <div class="mb-3" t-if="not is_validator_view">
+                        <t t-if="mission.state == 'draft'">
+                            <a t-attf-href="/my/missions/#{mission.id}/edit"
+                               class="btn btn-sm btn-primary">
+                                <i class="fa fa-pencil"/> Modifier
+                            </a>
+                            <form t-attf-action="/my/missions/#{mission.id}/submit" method="post"
+                                  class="d-inline"
+                                  onsubmit="return confirm('Soumettre cette demande pour validation ?');">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <button type="submit" class="btn btn-sm btn-success">
+                                    <i class="fa fa-paper-plane"/> Soumettre
+                                </button>
+                            </form>
+                            <form t-attf-action="/my/missions/#{mission.id}/delete" method="post"
+                                  class="d-inline"
+                                  onsubmit="return confirm('Supprimer définitivement ce brouillon ?');">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                    <i class="fa fa-trash"/> Supprimer
+                                </button>
+                            </form>
+                        </t>
+                        <t t-if="mission.state == 'submitted'">
+                            <form t-attf-action="/my/missions/#{mission.id}/reset" method="post"
+                                  class="d-inline"
+                                  onsubmit="return confirm('Retirer votre demande ? Elle reviendra en brouillon et le circuit repartira de zéro à la prochaine soumission.');">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                    <i class="fa fa-undo"/> Retirer (remettre en brouillon)
+                                </button>
+                            </form>
+                        </t>
+                        <t t-if="mission.state == 'refused'">
+                            <form t-attf-action="/my/missions/#{mission.id}/reset" method="post"
+                                  class="d-inline">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <button type="submit" class="btn btn-sm btn-primary">
+                                    <i class="fa fa-undo"/> Remettre en brouillon pour corriger
+                                </button>
+                            </form>
+                        </t>
+                    </div>
+
+                    <div t-if="mission.state == 'refused' and mission.refusal_reason"
+                         class="alert alert-danger" role="alert">
+                        <strong>Motif du refus :</strong>
+                        <span style="white-space: pre-wrap;" t-esc="mission.refusal_reason"/>
+                    </div>
+
+                    <h5 class="mt-3">Informations</h5>
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr t-if="is_validator_view">
+                                <th class="w-25">Demandeur</th>
+                                <td><t t-esc="mission.employee_id.name"/>
+                                    <span t-if="mission.job_title" class="text-muted">
+                                        — <t t-esc="mission.job_title"/></span>
+                                </td>
+                            </tr>
+                            <tr><th class="w-25">Objet</th><td><t t-esc="mission.objet"/></td></tr>
+                            <tr><th>Destination</th><td><t t-esc="mission.destination"/></td></tr>
+                            <tr><th>Zone</th><td><t t-esc="mission.zone_id.name"/></td></tr>
+                            <tr><th>Départ</th><td><span t-field="mission.date_depart"/></td></tr>
+                            <tr><th>Retour</th><td><span t-field="mission.date_retour"/></td></tr>
+                            <tr><th>Durée</th><td><t t-esc="mission.duration"/> jour(s)</td></tr>
+                            <tr>
+                                <th>Moyen de transport</th>
+                                <td><t t-esc="dict(mission._fields['transport'].selection).get(mission.transport, '')"/></td>
+                            </tr>
+                            <tr t-if="mission.description">
+                                <th>Précisions</th>
+                                <td><span style="white-space: pre-wrap;" t-esc="mission.description"/></td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- En brouillon les montants n'existent pas encore, mais les
+                         frais prévus (saisie de l'employé) restent visibles -->
+                    <t t-if="mission.state == 'draft' and mission.frais_ids">
+                        <h5 class="mt-3">Frais prévus (à justifier)</h5>
+                        <ul>
+                            <li t-foreach="mission.frais_ids" t-as="frais">
+                                <t t-esc="frais.description"/> :
+                                <span t-field="frais.montant"
+                                      t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/>
+                            </li>
+                        </ul>
+                    </t>
+
+                    <!-- Montants : figés à la soumission, donc rien à montrer en brouillon -->
+                    <t t-if="mission.state != 'draft'">
+                        <h5 class="mt-3">Indemnités</h5>
+                        <table class="table table-sm">
+                            <tbody>
+                                <tr t-if="mission.categorie_agent">
+                                    <th class="w-25">Catégorie</th>
+                                    <td><t t-esc="mission.categorie_agent"/></td>
+                                </tr>
+                                <tr>
+                                    <th>Indemnité journalière</th>
+                                    <td><span t-field="mission.indemnite_jour"
+                                              t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/>
+                                        × <t t-esc="mission.duration"/> jour(s)</td>
+                                </tr>
+                                <tr>
+                                    <th>Indemnité de mission</th>
+                                    <td><span t-field="mission.indemnite_total"
+                                              t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></td>
+                                </tr>
+                                <tr t-if="mission.frais_ids">
+                                    <th>Autres frais (à justifier)</th>
+                                    <td>
+                                        <ul class="list-unstyled mb-0">
+                                            <li t-foreach="mission.frais_ids" t-as="frais">
+                                                <t t-esc="frais.description"/> :
+                                                <span t-field="frais.montant"
+                                                      t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/>
+                                            </li>
+                                        </ul>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Total dû</th>
+                                    <td><strong><span t-field="mission.total_du"
+                                              t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></strong></td>
+                                </tr>
+                                <tr>
+                                    <th>Avance avant départ</th>
+                                    <td>
+                                        <span t-field="mission.avance_montant"
+                                              t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/>
+                                        <span t-if="mission.avance_versee"
+                                              class="badge rounded-pill text-bg-success ms-2">Versée</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Solde au retour</th>
+                                    <td><span t-field="mission.solde"
+                                              t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </t>
+
+                    <t t-if="mission.validation_line_ids">
+                        <h5 class="mt-3">Circuit de validation</h5>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr class="active">
+                                    <th>Étape</th>
+                                    <th>Valideur</th>
+                                    <th class="text-center">Statut</th>
+                                    <th>Date</th>
+                                    <th>Commentaire</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr t-foreach="mission.validation_line_ids" t-as="step">
+                                    <td><t t-esc="step.name"/></td>
+                                    <td><t t-esc="step.validator_id.name"/></td>
+                                    <td class="text-center">
+                                        <span t-if="step.state == 'approved'" class="badge rounded-pill text-bg-success">
+                                            <t t-esc="mission_step_labels.get(step.state)"/>
+                                        </span>
+                                        <span t-elif="step.state == 'refused'" class="badge rounded-pill text-bg-danger">
+                                            <t t-esc="mission_step_labels.get(step.state)"/>
+                                        </span>
+                                        <span t-elif="step.state == 'pending'" class="badge rounded-pill text-bg-info">
+                                            <t t-esc="mission_step_labels.get(step.state)"/>
+                                        </span>
+                                        <span t-else="" class="badge rounded-pill text-bg-secondary">
+                                            <t t-esc="mission_step_labels.get(step.state)"/>
+                                        </span>
+                                    </td>
+                                    <td><span t-if="step.date_action" t-field="step.date_action"/></td>
+                                    <td>
+                                        <small t-if="step.comment" style="white-space: pre-wrap;">
+                                            <t t-esc="step.comment"/>
+                                        </small>
+                                        <span t-else="" class="text-muted">&#8212;</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </t>
+
+                    <a t-if="not is_validator_view" href="/my/missions"
+                       class="btn btn-sm btn-secondary mt-2">
+                        <i class="fa fa-arrow-left"/> Retour à mes missions
+                    </a>
+                    <a t-if="is_validator_view" href="/my/team/missions"
+                       class="btn btn-sm btn-secondary mt-2">
+                        <i class="fa fa-arrow-left"/> Retour aux missions à valider
+                    </a>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- ==================== Espace valideur : liste ==================== -->
+    <template id="portal_team_missions" name="Missions à valider">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Missions à valider</t>
+            </t>
+
+            <div t-if="success_message" class="alert alert-success mt-3" role="alert">
+                <t t-esc="success_message"/>
+            </div>
+
+            <h5 class="mt-3">En attente de ma décision</h5>
+            <t t-if="not to_decide">
+                <div class="alert alert-info" role="alert">
+                    Aucune demande n'attend votre décision.
+                </div>
+            </t>
+            <div t-if="to_decide" class="table-responsive">
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr class="active">
+                            <th>Demandeur</th>
+                            <th>Objet</th>
+                            <th>Destination</th>
+                            <th>Départ</th>
+                            <th>Retour</th>
+                            <th class="text-end">Total dû</th>
+                            <th class="text-end">Décision</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr t-foreach="to_decide" t-as="m">
+                            <td><t t-esc="m.employee_id.name"/></td>
+                            <td><t t-esc="m.objet"/></td>
+                            <td><t t-esc="m.destination"/></td>
+                            <td><span t-field="m.date_depart"/></td>
+                            <td><span t-field="m.date_retour"/></td>
+                            <td class="text-end">
+                                <span t-field="m.total_du"
+                                      t-options='{"widget": "monetary", "display_currency": m.currency_id}'/>
+                            </td>
+                            <td class="text-end">
+                                <a t-attf-href="/my/team/missions/#{m.id}"
+                                   class="btn btn-sm btn-primary">
+                                    <i class="fa fa-gavel"/> Statuer
+                                </a>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h5 class="mt-4">Historique de mon périmètre</h5>
+            <t t-if="not history">
+                <div class="alert alert-info" role="alert">
+                    Aucune autre mission dans votre périmètre.
+                </div>
+            </t>
+            <t t-if="history" t-call="portal.portal_table">
+                <thead>
+                    <tr class="active">
+                        <th>Numéro</th>
+                        <th>Demandeur</th>
+                        <th>Objet</th>
+                        <th>Départ</th>
+                        <th>Retour</th>
+                        <th class="text-center">Statut</th>
+                        <th class="text-end">Détail</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr t-foreach="history" t-as="m">
+                        <td><t t-esc="m.name"/></td>
+                        <td><t t-esc="m.employee_id.name"/></td>
+                        <td><t t-esc="m.objet"/></td>
+                        <td><span t-field="m.date_depart"/></td>
+                        <td><span t-field="m.date_retour"/></td>
+                        <td class="text-center">
+                            <span t-if="m.state == 'validated'" class="badge rounded-pill text-bg-success">
+                                <t t-esc="mission_state_labels.get(m.state, m.state)"/>
+                            </span>
+                            <span t-elif="m.state == 'refused'" class="badge rounded-pill text-bg-danger">
+                                <t t-esc="mission_state_labels.get(m.state, m.state)"/>
+                            </span>
+                            <span t-elif="m.state == 'submitted'" class="badge rounded-pill text-bg-info">
+                                <t t-esc="mission_state_labels.get(m.state, m.state)"/>
+                            </span>
+                            <span t-else="" class="badge rounded-pill text-bg-secondary">
+                                <t t-esc="mission_state_labels.get(m.state, m.state)"/>
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            <a t-attf-href="/my/team/missions/#{m.id}"
+                               class="btn btn-sm btn-secondary">
+                                <i class="fa fa-eye"/> Voir
+                            </a>
+                        </td>
+                    </tr>
+                </tbody>
+            </t>
+        </t>
+    </template>
+
+    <!-- ============== Formulaire (nouvelle demande / brouillon) ============== -->
+    <template id="portal_my_mission_form" name="Demande de mission">
+        <t t-call="portal.portal_layout">
+            <div class="row mt-3">
+                <div class="col-12 col-lg-8">
+                    <h4>
+                        <t t-if="mission">Modifier ma demande de mission</t>
+                        <t t-else="">Nouvelle demande de mission</t>
+                    </h4>
+
+                    <div t-if="error.get('global')" class="alert alert-danger" role="alert">
+                        <t t-esc="error['global']"/>
+                    </div>
+
+                    <form method="post"
+                          t-attf-action="#{'/my/missions/%s/edit' % mission.id if mission else '/my/missions/new'}">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="gm_objet">Objet de la mission *</label>
+                            <input type="text" name="objet" id="gm_objet" class="form-control"
+                                   t-att-value="form_values['objet']"
+                                   placeholder="ex. Participation à une formation..."/>
+                            <div t-if="error.get('objet')" class="text-danger small">
+                                <t t-esc="error['objet']"/>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label" for="gm_destination">Destination *</label>
+                                <input type="text" name="destination" id="gm_destination" class="form-control"
+                                       t-att-value="form_values['destination']"
+                                       placeholder="Ville (et pays si hors Burkina Faso)"/>
+                                <div t-if="error.get('destination')" class="text-danger small">
+                                    <t t-esc="error['destination']"/>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label" for="gm_zone">Zone *</label>
+                                <select name="zone_id" id="gm_zone" class="form-select">
+                                    <option value="">— Choisir une zone —</option>
+                                    <option t-foreach="zones" t-as="z" t-att-value="z.id"
+                                            t-att-selected="'selected' if form_values['zone_id'] == str(z.id) else None">
+                                        <t t-esc="z.name"/>
+                                    </option>
+                                </select>
+                                <div t-if="error.get('zone_id')" class="text-danger small">
+                                    <t t-esc="error['zone_id']"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label" for="gm_depart">Date de départ</label>
+                                <input type="date" name="date_depart" id="gm_depart" class="form-control"
+                                       t-att-value="form_values['date_depart']"/>
+                                <div t-if="error.get('date_depart')" class="text-danger small">
+                                    <t t-esc="error['date_depart']"/>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label" for="gm_retour">Date de retour</label>
+                                <input type="date" name="date_retour" id="gm_retour" class="form-control"
+                                       t-att-value="form_values['date_retour']"/>
+                                <div t-if="error.get('date_retour')" class="text-danger small">
+                                    <t t-esc="error['date_retour']"/>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label" for="gm_transport">Moyen de transport</label>
+                                <select name="transport" id="gm_transport" class="form-select">
+                                    <option t-foreach="transports" t-as="tr" t-att-value="tr[0]"
+                                            t-att-selected="'selected' if form_values['transport'] == tr[0] else None">
+                                        <t t-esc="tr[1]"/>
+                                    </option>
+                                </select>
+                                <div t-if="error.get('transport')" class="text-danger small">
+                                    <t t-esc="error['transport']"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="gm_description">Précisions</label>
+                            <textarea name="description" id="gm_description" class="form-control" rows="3"
+                                      placeholder="Contexte, participants, programme prévisionnel..."><t t-esc="form_values['description']"/></textarea>
+                        </div>
+
+                        <label class="form-label">Frais prévus (à justifier)</label>
+                        <p class="text-muted small mb-1">
+                            Billet, visa, inscription... Ces montants s'ajoutent aux
+                            indemnités journalières calculées automatiquement.
+                        </p>
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr class="active">
+                                    <th>Description</th>
+                                    <th style="width: 12rem;">Montant</th>
+                                    <th style="width: 3rem;"/>
+                                </tr>
+                            </thead>
+                            <tbody id="gm_frais_body">
+                                <tr t-foreach="form_values['frais']" t-as="fr">
+                                    <td><input type="text" name="frais_description" class="form-control"
+                                               t-att-value="fr['description']"/></td>
+                                    <td><input type="number" name="frais_montant" class="form-control"
+                                               t-att-value="fr['montant']" min="1" step="any"
+                                               inputmode="decimal"
+                                               onkeydown="return ['e','E','+','-'].indexOf(event.key) === -1"/></td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                                onclick="gmDelFrais(this)" title="Retirer cette ligne">
+                                            <i class="fa fa-times"/>
+                                        </button>
+                                    </td>
+                                </tr>
+                                <tr t-if="not form_values['frais']">
+                                    <td><input type="text" name="frais_description" class="form-control"/></td>
+                                    <td><input type="number" name="frais_montant" class="form-control"
+                                               min="1" step="any" inputmode="decimal"
+                                               onkeydown="return ['e','E','+','-'].indexOf(event.key) === -1"/></td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                                onclick="gmDelFrais(this)" title="Retirer cette ligne">
+                                            <i class="fa fa-times"/>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <button type="button" class="btn btn-sm btn-outline-secondary mb-3"
+                                onclick="gmAddFrais()">
+                            <i class="fa fa-plus"/> Ajouter un frais
+                        </button>
+                        <div t-if="error.get('frais')" class="text-danger small mb-2">
+                            <t t-esc="error['frais']"/>
+                        </div>
+
+                        <div class="mt-2">
+                            <button type="submit" name="action" value="draft"
+                                    class="btn btn-secondary">
+                                <i class="fa fa-save"/> Enregistrer en brouillon
+                            </button>
+                            <button type="submit" name="action" value="submit"
+                                    class="btn btn-primary"
+                                    onclick="return confirm('Soumettre cette demande pour validation ?');">
+                                <i class="fa fa-paper-plane"/> Soumettre pour validation
+                            </button>
+                            <a t-attf-href="#{'/my/missions/%s' % mission.id if mission else '/my/missions'}"
+                               class="btn btn-link">Annuler</a>
+                        </div>
+                    </form>
+
+                    <script type="text/javascript">
+                        function gmDelFrais(btn) {
+                            var body = document.getElementById('gm_frais_body');
+                            var row = btn.closest('tr');
+                            if (body.rows.length > 1) {
+                                row.remove();
+                            } else {
+                                row.querySelectorAll('input').forEach(function (i) { i.value = ''; });
+                            }
+                        }
+                        function gmAddFrais() {
+                            var body = document.getElementById('gm_frais_body');
+                            var row = body.rows[0].cloneNode(true);
+                            row.querySelectorAll('input').forEach(function (i) { i.value = ''; });
+                            body.appendChild(row);
+                        }
+                    </script>
+                </div>
+            </div>
+        </t>
+    </template>
+
+</odoo>
