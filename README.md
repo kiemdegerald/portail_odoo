@@ -62,3 +62,18 @@ Conçu comme **socle d'une famille de modules** : les domaines suivants
 
 **Prérequis** : Odoo 17 Enterprise (hr_payroll), modules `hr_leave_documents`
 et `custom_salary_reports` de l'écosystème LICELI.
+
+## Modules missions (même écosystème)
+
+- **`gestion_mission`** (module métier autonome) : demandes de mission,
+  circuit de validation configurable photographié à la soumission,
+  numérotation officielle NNN/AAAA/SIGLE à la validation, barèmes per
+  diem par zone × catégorie d'agent, avance paramétrable et solde,
+  frais à justifier multi-lignes, ordre de mission et fiche de décompte
+  PDF, écran de paramètres dédié.
+- **`portail_mission`** (connecteur portail, dépend de `portail` et
+  `gestion_mission`) : l'employé consulte, crée, soumet, corrige et
+  retire ses demandes ; le valideur statue (approbation, refus, renvoi
+  commenté) ; notifications email à chaque étape ; téléchargement des
+  documents officiels des missions validées. Aucune logique métier dans
+  le connecteur.

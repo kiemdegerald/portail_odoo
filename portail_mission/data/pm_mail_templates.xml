@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Emails du circuit des missions (portail).
+         noupdate="1" : les RH peuvent retoucher les textes dans
+         Paramètres > Technique > Modèles d'email sans qu'une mise à jour
+         du module les écrase. auto_delete=False : traçabilité. -->
+    <data noupdate="1">
+
+        <!-- 1) Au valideur de l'étape en cours : une décision est attendue -->
+        <record id="mail_mission_to_validate" model="mail.template">
+            <field name="name">Portail missions : demande à valider (valideur)</field>
+            <field name="model_id" ref="gestion_mission.model_gm_mission"/>
+            <field name="subject">Mission de {{ object.employee_id.name }} à valider — {{ object.objet }}</field>
+            <field name="email_to">{{ object.current_validator_id.work_contact_id.email or object.current_validator_id.work_email }}</field>
+            <field name="auto_delete" eval="False"/>
+            <field name="body_html" type="html">
+<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+    <p>Bonjour <t t-out="object.current_validator_id.name"/>,</p>
+    <p>La demande de mission de <strong t-out="object.employee_id.name"/>
+       attend votre décision :</p>
+    <ul>
+        <li>Objet : <strong t-out="object.objet"/></li>
+        <li>Destination : <strong t-out="object.destination"/> (<t t-out="object.zone_id.name"/>)</li>
+        <li>Période : du <strong t-out="format_date(object.date_depart)"/>
+            au <strong t-out="format_date(object.date_retour)"/>
+            (<t t-out="object.duration"/> jours)</li>
+        <li>Total dû estimé : <strong t-out="format_amount(object.total_du, object.currency_id)"/>
+            (dont avance proposée : <t t-out="format_amount(object.avance_montant, object.currency_id)"/>)</li>
+    </ul>
+    <p style="margin: 16px 0;">
+        <a t-attf-href="#{object.get_base_url()}/my/team/missions/#{object.id}"
+           style="background: #714B67; color: #fff; padding: 10px 18px; border-radius: 4px; text-decoration: none;">
+            Voir la demande et statuer
+        </a>
+    </p>
+</div>
+            </field>
+        </record>
+
+        <!-- 2) À l'employé : mission validée (numéro officiel attribué) -->
+        <record id="mail_mission_validated" model="mail.template">
+            <field name="name">Portail missions : mission validée (employé)</field>
+            <field name="model_id" ref="gestion_mission.model_gm_mission"/>
+            <field name="subject">Votre mission « {{ object.objet }} » est validée — {{ object.name }}</field>
+            <field name="email_to">{{ object.employee_id.work_contact_id.email or object.employee_id.work_email }}</field>
+            <field name="auto_delete" eval="False"/>
+            <field name="body_html" type="html">
+<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+    <p>Bonjour <t t-out="object.employee_id.name"/>,</p>
+    <p>Votre demande de mission
+       (<t t-out="object.objet"/>, <t t-out="object.destination"/>,
+       du <strong t-out="format_date(object.date_depart)"/>
+       au <strong t-out="format_date(object.date_retour)"/>) a été
+       <strong style="color: #28a745;">validée</strong>.</p>
+    <p>Ordre de mission n° <strong t-out="object.name"/>.
+       Indemnités : <strong t-out="format_amount(object.total_du, object.currency_id)"/>,
+       dont avance avant départ :
+       <strong t-out="format_amount(object.avance_montant, object.currency_id)"/>.</p>
+    <p style="margin: 16px 0;">
+        <a t-attf-href="#{object.get_base_url()}/my/missions/#{object.id}"
+           style="background: #714B67; color: #fff; padding: 10px 18px; border-radius: 4px; text-decoration: none;">
+            Voir ma mission
+        </a>
+    </p>
+</div>
+            </field>
+        </record>
+
+        <!-- 3) À l'employé : demande refusée (motif) -->
+        <record id="mail_mission_refused" model="mail.template">
+            <field name="name">Portail missions : demande refusée (employé)</field>
+            <field name="model_id" ref="gestion_mission.model_gm_mission"/>
+            <field name="subject">Votre demande de mission « {{ object.objet }} » a été refusée</field>
+            <field name="email_to">{{ object.employee_id.work_contact_id.email or object.employee_id.work_email }}</field>
+            <field name="auto_delete" eval="False"/>
+            <field name="body_html" type="html">
+<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+    <p>Bonjour <t t-out="object.employee_id.name"/>,</p>
+    <p>Votre demande de mission
+       (<t t-out="object.objet"/>, <t t-out="object.destination"/>,
+       du <strong t-out="format_date(object.date_depart)"/>
+       au <strong t-out="format_date(object.date_retour)"/>) a été
+       <strong style="color: #dc3545;">refusée</strong>.</p>
+    <p t-if="object.refusal_reason">
+        Motif : <em t-out="object.refusal_reason"/>
+    </p>
+    <p style="margin: 16px 0;">
+        <a t-attf-href="#{object.get_base_url()}/my/missions/#{object.id}"
+           style="background: #714B67; color: #fff; padding: 10px 18px; border-radius: 4px; text-decoration: none;">
+            Voir ma demande
+        </a>
+    </p>
+</div>
+            </field>
+        </record>
+
+        <!-- 4) À l'employé : demande renvoyée pour correction -->
+        <record id="mail_mission_sent_back" model="mail.template">
+            <field name="name">Portail missions : demande à corriger (employé)</field>
+            <field name="model_id" ref="gestion_mission.model_gm_mission"/>
+            <field name="subject">Votre demande de mission « {{ object.objet }} » est à corriger</field>
+            <field name="email_to">{{ object.employee_id.work_contact_id.email or object.employee_id.work_email }}</field>
+            <field name="auto_delete" eval="False"/>
+            <field name="body_html" type="html">
+<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+    <p>Bonjour <t t-out="object.employee_id.name"/>,</p>
+    <p>Votre demande de mission
+       (<t t-out="object.objet"/>, <t t-out="object.destination"/>) vous a
+       été <strong>renvoyée pour correction</strong> : elle est repassée en
+       brouillon.</p>
+    <p t-if="ctx.get('pm_comment')">
+        Commentaire du valideur : <em t-out="ctx.get('pm_comment')"/>
+    </p>
+    <p style="margin: 16px 0;">
+        <a t-attf-href="#{object.get_base_url()}/my/missions/#{object.id}/edit"
+           style="background: #714B67; color: #fff; padding: 10px 18px; border-radius: 4px; text-decoration: none;">
+            Corriger et resoumettre
+        </a>
+    </p>
+</div>
+            </field>
+        </record>
+
+    </data>
+</odoo>
