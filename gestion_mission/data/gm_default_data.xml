@@ -13,6 +13,18 @@
             <field name="value">100</field>
         </record>
 
+        <!-- Qui peut INITIER une demande depuis le portail ("1"/"0") —
+             paramétrable dans Paramètres > Missions. La RH/gestionnaire
+             peut toujours créer au backend, quel que soit le réglage. -->
+        <record id="param_portal_employee_can_create" model="ir.config_parameter">
+            <field name="key">gm.portal_employee_can_create</field>
+            <field name="value">1</field>
+        </record>
+        <record id="param_portal_chef_can_create" model="ir.config_parameter">
+            <field name="key">gm.portal_chef_can_create</field>
+            <field name="value">1</field>
+        </record>
+
         <record id="step_default_manager" model="gm.validation.step">
             <field name="sequence">10</field>
             <field name="name">Supérieur hiérarchique</field>

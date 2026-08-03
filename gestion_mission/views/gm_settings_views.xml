@@ -24,6 +24,16 @@
                             <field name="gm_dg_name"/>
                         </setting>
                     </block>
+                    <block title="Qui peut initier une demande (portail)" name="gm_block_create">
+                        <setting string="Les employés créent leurs demandes"
+                                 help="L'employé crée et soumet ses propres demandes de mission depuis le portail. Décoché : il ne fait que suivre les demandes créées pour lui.">
+                            <field name="gm_portal_employee_can_create"/>
+                        </setting>
+                        <setting string="Les chefs créent pour leurs collaborateurs"
+                                 help="Un supérieur hiérarchique crée une demande au nom d'un collaborateur direct depuis le portail : brouillon que l'agent complète et soumet, ou soumission directe. La RH peut toujours créer depuis le backend, quel que soit le réglage.">
+                            <field name="gm_portal_chef_can_create"/>
+                        </setting>
+                    </block>
                 </app>
             </xpath>
         </field>
