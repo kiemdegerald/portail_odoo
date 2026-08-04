@@ -12,3 +12,5 @@ access_gm_mission_zone_user,gm.mission.zone.user,model_gm_mission_zone,group_gm_
 access_gm_mission_zone_manager,gm.mission.zone.manager,model_gm_mission_zone,group_gm_manager,1,1,1,1
 access_gm_mission_frais_user,gm.mission.frais.user,model_gm_mission_frais,group_gm_user,1,1,1,1
 access_gm_mission_frais_manager,gm.mission.frais.manager,model_gm_mission_frais,group_gm_manager,1,1,1,1
+access_gm_mission_membre_user,gm.mission.membre.user,model_gm_mission_membre,group_gm_user,1,1,1,1
+access_gm_mission_membre_manager,gm.mission.membre.manager,model_gm_mission_membre,group_gm_manager,1,1,1,1

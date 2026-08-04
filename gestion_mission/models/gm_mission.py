@@ -78,21 +78,28 @@ class GmMission(models.Model):
     refusal_reason = fields.Text(
         string="Motif du refus", readonly=True, copy=False, tracking=True)
 
-    # --- Indemnités (photo prise à la soumission, comme le circuit) ---
+    # --- Membres et indemnités (photo par MEMBRE, prise à la soumission) ---
+    membre_ids = fields.One2many(
+        "gm.mission.membre", "mission_id",
+        string="Membres de la mission", copy=False,
+        help="Les missionnaires (cf. tableau de l'ordre de mission). Le "
+             "demandeur est ajouté automatiquement. Chaque membre a sa "
+             "propre indemnité selon sa catégorie.")
     currency_id = fields.Many2one(
         "res.currency", string="Devise",
         related="company_id.currency_id")
     categorie_agent = fields.Char(
-        string="Catégorie d'agent", readonly=True, copy=False,
-        help="Catégorie issue de la classification (grille salariale) du "
-             "demandeur, figée à la soumission.")
+        string="Catégorie (chef de mission)", readonly=True, copy=False,
+        help="Catégorie du demandeur/chef de mission, figée à la "
+             "soumission. Le détail par membre est dans l'onglet Membres.")
     indemnite_jour = fields.Monetary(
-        string="Indemnité / jour", readonly=True, copy=False,
-        help="Montant journalier du barème (zone × catégorie), figé à la "
-             "soumission.")
+        string="Indemnité / jour (chef)", readonly=True, copy=False,
+        help="Taux journalier du demandeur/chef de mission. Le détail par "
+             "membre est dans l'onglet Membres.")
     indemnite_total = fields.Monetary(
-        string="Indemnité de mission", readonly=True, copy=False,
-        help="Indemnité journalière × nombre de jours.")
+        string="Indemnité de mission", copy=False,
+        compute="_compute_indemnite_total", store=True,
+        help="Somme des indemnités de tous les membres.")
     frais_ids = fields.One2many(
         "gm.mission.frais", "mission_id",
         string="Autres frais (à justifier)", copy=False,
@@ -109,9 +116,10 @@ class GmMission(models.Model):
         help="Indemnité de mission + autres frais.")
     avance_montant = fields.Monetary(
         string="Avance avant départ", copy=False, tracking=True,
-        help="Proposée automatiquement à la soumission (% paramétrable du "
-             "total dû — paramètre système gm.avance_pct), ajustable par le "
-             "gestionnaire jusqu'à son versement.")
+        compute="_compute_avance_montant", store=True,
+        help="Somme des avances des membres (proposées à la soumission, % "
+             "paramétrable ; ajustables par membre par le gestionnaire "
+             "jusqu'au versement).")
     avance_versee = fields.Boolean(
         string="Avance versée", copy=False, tracking=True,
         help="À cocher par la finance lors du décaissement (tracé).")
@@ -168,6 +176,18 @@ class GmMission(models.Model):
         for mission in self:
             mission.autres_frais = sum(mission.frais_ids.mapped("montant"))
 
+    @api.depends("membre_ids.indemnite_total")
+    def _compute_indemnite_total(self):
+        for mission in self:
+            mission.indemnite_total = sum(
+                mission.membre_ids.mapped("indemnite_total"))
+
+    @api.depends("membre_ids.avance_montant")
+    def _compute_avance_montant(self):
+        for mission in self:
+            mission.avance_montant = sum(
+                mission.membre_ids.mapped("avance_montant"))
+
     @api.depends("indemnite_total", "autres_frais", "avance_montant")
     def _compute_total_du(self):
         for mission in self:
@@ -182,7 +202,8 @@ class GmMission(models.Model):
             mission.current_validator_id = pending.validator_id
 
     @api.depends_context("uid")
-    @api.depends("state", "current_validator_id", "employee_id")
+    @api.depends("state", "current_validator_id", "employee_id",
+                 "membre_ids.employee_id")
     def _compute_can_decide(self):
         user = self.env.user
         user_employee = user.employee_id
@@ -193,10 +214,12 @@ class GmMission(models.Model):
                 and (is_manager
                      or (user_employee
                          and mission.current_validator_id == user_employee))
-                # Séparation des tâches : on ne statue JAMAIS sur sa
-                # propre mission, même gestionnaire.
+                # Séparation des tâches : un MEMBRE de la mission ne
+                # statue jamais sur celle-ci, même gestionnaire.
                 and (not user_employee
-                     or user_employee != mission.employee_id))
+                     or user_employee not in (
+                         mission.membre_ids.employee_id
+                         | mission.employee_id)))
             mission.can_decide = allowed
 
     @api.depends_context("uid")
@@ -216,6 +239,13 @@ class GmMission(models.Model):
                 or (mission.state == "submitted"
                     and user_employee
                     and user_employee == mission.employee_id))
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        missions = super().create(vals_list)
+        # le demandeur est d'office le premier membre du tableau
+        missions._ensure_chef_membre()
+        return missions
 
     # ------------------------------------------------------------------
     # Numérotation
@@ -259,63 +289,101 @@ class GmMission(models.Model):
     # ------------------------------------------------------------------
     # Indemnités (photo à la soumission)
     # ------------------------------------------------------------------
-    def _get_agent_category(self):
-        """Catégorie d'agent du demandeur, lue depuis sa classification
+    @api.model
+    def _get_agent_category(self, employee):
+        """Catégorie d'agent d'un employé, lue depuis sa classification
         (grille salariale Studio). Accès défensif : sur une base sans ces
         champs, renvoie False (le message d'erreur guide alors les RH)."""
-        self.ensure_one()
-        employee = self.employee_id.sudo()
+        employee = employee.sudo()
         classification = getattr(employee, "x_studio_classification", None)
         if classification:
             return getattr(classification, "x_studio_catgorie", False)
         return False
 
-    def _snapshot_indemnites(self):
-        """Fige les montants sur la mission au moment de la soumission
-        (même philosophie que la photo du circuit) : catégorie, taux du
-        barème, indemnité totale et avance proposée. Les valideurs statuent
-        donc sur des montants qui ne bougeront plus, même si le barème est
-        modifié pendant la circulation du dossier."""
-        self.ensure_one()
-        categorie = self._get_agent_category()
-        if not categorie:
-            raise UserError(_(
-                "Impossible de soumettre : la fiche de %s n'a pas de "
-                "classification (grille salariale), la catégorie d'agent "
-                "est donc inconnue. Contactez le service RH.",
-                self.employee_id.name))
-        rate = self.env["gm.perdiem.rate"].get_rate(
-            self.zone_id, categorie, self.company_id)
-        if not rate:
-            raise UserError(_(
-                "Aucun barème d'indemnité pour la zone « %(zone)s » et la "
-                "catégorie « %(cat)s ». Demandez au gestionnaire de "
-                "compléter le barème (Missions > Configuration).",
-                zone=self.zone_id.name, cat=categorie))
-        total = rate.montant_jour * self.duration
+    def _ensure_chef_membre(self):
+        """Le demandeur (chef de mission) est TOUJOURS membre : ajouté en
+        tête du tableau s'il n'y figure pas."""
+        for mission in self:
+            if mission.employee_id and mission.employee_id \
+                    not in mission.membre_ids.employee_id:
+                self.env["gm.mission.membre"].create({
+                    "mission_id": mission.id,
+                    "employee_id": mission.employee_id.id,
+                    "sequence": 1,
+                })
+
+    def _ensure_frais_membre(self):
+        """Un frais sans missionnaire est rattaché au chef de mission
+        (les frais de la fiche de décompte sont PAR missionnaire)."""
+        for mission in self:
+            orphans = mission.frais_ids.filtered(lambda f: not f.membre_id)
+            if orphans:
+                chef = mission.membre_ids.filtered(
+                    lambda m: m.employee_id == mission.employee_id)[:1]
+                orphans.write({"membre_id": chef.id})
+
+    def _avance_pct(self):
         pct_str = self.env["ir.config_parameter"].sudo().get_param(
             "gm.avance_pct", "100")
         try:
-            pct = max(0.0, min(100.0, float(pct_str)))
+            return max(0.0, min(100.0, float(pct_str)))
         except ValueError:
-            pct = 100.0
+            return 100.0
+
+    def _snapshot_indemnites(self):
+        """Fige les montants PAR MEMBRE au moment de la soumission (même
+        philosophie que la photo du circuit) : catégorie, taux du barème
+        selon la catégorie du membre, indemnité et part d'avance. Les
+        valideurs statuent sur des montants qui ne bougeront plus, même si
+        le barème est modifié pendant la circulation du dossier."""
+        self.ensure_one()
+        pct = self._avance_pct()
+        for membre in self.membre_ids:
+            categorie = self._get_agent_category(membre.employee_id)
+            if not categorie:
+                raise UserError(_(
+                    "Impossible de soumettre : la fiche de %s n'a pas de "
+                    "classification (grille salariale), sa catégorie "
+                    "d'agent est donc inconnue. Contactez le service RH.",
+                    membre.employee_id.name))
+            rate = self.env["gm.perdiem.rate"].get_rate(
+                self.zone_id, categorie, self.company_id)
+            if not rate:
+                raise UserError(_(
+                    "Aucun barème d'indemnité pour la zone « %(zone)s » et "
+                    "la catégorie « %(cat)s » (membre : %(emp)s). Demandez "
+                    "au gestionnaire de compléter le barème (Missions > "
+                    "Configuration).",
+                    zone=self.zone_id.name, cat=categorie,
+                    emp=membre.employee_id.name))
+            total = rate.montant_jour * self.duration
+            membre.write({
+                "categorie_agent": categorie,
+                "indemnite_jour": rate.montant_jour,
+                "indemnite_total": total,
+                "avance_montant": self.currency_id.round(
+                    (total + membre.autres_frais) * pct / 100.0),
+            })
+        chef = self.membre_ids.filtered(
+            lambda m: m.employee_id == self.employee_id)[:1]
         self.write({
-            "categorie_agent": categorie,
-            "indemnite_jour": rate.montant_jour,
-            "indemnite_total": total,
-            "avance_montant": self.currency_id.round(
-                (total + self.autres_frais) * pct / 100.0),
+            "categorie_agent": chef.categorie_agent,
+            "indemnite_jour": chef.indemnite_jour,
         })
 
     def _clear_indemnites(self):
-        """Efface la photo financière (retour en brouillon : une nouvelle
-        photo sera prise à la re-soumission). Les « autres frais » saisis
-        sont conservés (c'est une saisie, pas un calcul)."""
-        self.write({
+        """Efface la photo financière de tous les membres (retour en
+        brouillon : une nouvelle photo sera prise à la re-soumission). Les
+        membres et leurs « autres frais » saisis sont conservés."""
+        self.membre_ids.write({
             "categorie_agent": False,
             "indemnite_jour": 0,
             "indemnite_total": 0,
             "avance_montant": 0,
+        })
+        self.write({
+            "categorie_agent": False,
+            "indemnite_jour": 0,
             "avance_versee": False,
         })
 
@@ -358,7 +426,7 @@ class GmMission(models.Model):
                         step=step.name, emp=self.employee_id.name))
             else:
                 validator = step.validator_id
-            if validator == self.employee_id:
+            if validator in (self.membre_ids.employee_id | self.employee_id):
                 skipped.append(step.name)
                 continue
             lines.append({
@@ -377,8 +445,8 @@ class GmMission(models.Model):
         records[0].state = "pending"
         if skipped:
             self.message_post(body=_(
-                "Étape(s) ignorée(s) car le demandeur ne peut pas se "
-                "valider lui-même : %s", ", ".join(skipped)))
+                "Étape(s) ignorée(s) car un membre de la mission ne peut "
+                "pas la valider lui-même : %s", ", ".join(skipped)))
         return records
 
     def _get_current_line(self):
@@ -414,10 +482,11 @@ class GmMission(models.Model):
         portal_actor = bool(
             self.env.context.get("gm_actor_employee_id") and self.env.su)
         user_employee = self._get_decision_actor()
-        if user_employee and user_employee == self.employee_id:
+        if user_employee and user_employee in (
+                self.membre_ids.employee_id | self.employee_id):
             raise UserError(_(
-                "Séparation des tâches : vous ne pouvez pas statuer sur "
-                "votre propre demande de mission."))
+                "Séparation des tâches : un membre de la mission ne peut "
+                "pas statuer sur celle-ci."))
         if not portal_actor \
                 and user.has_group("gestion_mission.group_gm_manager"):
             return
@@ -443,18 +512,23 @@ class GmMission(models.Model):
                 "La date de départ (%(date)s) est déjà passée : une mission "
                 "doit être autorisée avant le départ. Corrigez les dates.",
                 date=self.date_depart.strftime("%d/%m/%Y")))
+        member_emps = self.membre_ids.employee_id | self.employee_id
         overlap = self.search([
             ("id", "!=", self.id),
-            ("employee_id", "=", self.employee_id.id),
             ("state", "in", ("submitted", "validated")),
             ("date_depart", "<=", self.date_retour),
             ("date_retour", ">=", self.date_depart),
+            "|", ("employee_id", "in", member_emps.ids),
+            ("membre_ids.employee_id", "in", member_emps.ids),
         ], limit=1)
         if overlap:
+            concerned = ((overlap.membre_ids.employee_id
+                          | overlap.employee_id) & member_emps)
             raise UserError(_(
-                "%(emp)s a déjà une mission « %(objet)s » (%(num)s) du "
-                "%(du)s au %(au)s qui chevauche cette période.",
-                emp=self.employee_id.name, objet=overlap.objet,
+                "%(emp)s participe déjà à une mission « %(objet)s » "
+                "(%(num)s) du %(du)s au %(au)s qui chevauche cette période.",
+                emp=", ".join(concerned.mapped("name")),
+                objet=overlap.objet,
                 num=overlap.name if overlap.state == "validated"
                     else _("soumise, en attente de validation"),
                 du=overlap.date_depart.strftime("%d/%m/%Y"),
@@ -469,17 +543,25 @@ class GmMission(models.Model):
             if not (mission.date_depart and mission.date_retour):
                 raise UserError(_("Renseignez les dates de départ et de "
                                   "retour avant de soumettre."))
+            mission._ensure_chef_membre()
+            mission._ensure_frais_membre()
             mission._check_dates_at_submit()
             mission._snapshot_indemnites()
             lines = mission._create_validation_snapshot()
             mission.state = "submitted"
             mission.message_post(body=_(
-                "Demande soumise. Circuit : %(circuit)s. Indemnité : "
-                "%(jours)s j × %(taux)s = %(total)s (catégorie %(cat)s).",
+                "Demande soumise (%(nb)s membre(s)). Circuit : "
+                "%(circuit)s. Indemnités : %(detail)s — total %(total)s.",
+                nb=len(mission.membre_ids),
                 circuit=" → ".join("%s (%s)" % (l.name, l.validator_id.name)
                                    for l in lines),
-                jours=mission.duration, taux=mission.indemnite_jour,
-                total=mission.indemnite_total, cat=mission.categorie_agent))
+                detail="; ".join(
+                    "%s (%s, %s j × %s = %s)" % (
+                        m.employee_id.name, m.categorie_agent,
+                        mission.duration, m.indemnite_jour,
+                        m.indemnite_total)
+                    for m in mission.membre_ids),
+                total=mission.indemnite_total))
 
     def action_approve_step(self, comment=None):
         """Approuve l'étape en cours ; dernière étape -> mission validée."""

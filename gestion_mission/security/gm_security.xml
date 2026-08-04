@@ -74,4 +74,20 @@
         <field name="groups" eval="[(4, ref('group_gm_manager'))]"/>
     </record>
 
+    <!-- Les membres suivent le périmètre des missions -->
+    <record id="rule_gm_mission_membre_user" model="ir.rule">
+        <field name="name">Membres de mission : périmètre utilisateur</field>
+        <field name="model_id" ref="model_gm_mission_membre"/>
+        <field name="domain_force">['|',
+            ('mission_id.employee_id.user_id', '=', user.id),
+            ('mission_id.validation_line_ids.validator_id.user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_gm_user'))]"/>
+    </record>
+    <record id="rule_gm_mission_membre_manager" model="ir.rule">
+        <field name="name">Membres de mission : tous (gestionnaire)</field>
+        <field name="model_id" ref="model_gm_mission_membre"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups" eval="[(4, ref('group_gm_manager'))]"/>
+    </record>
+
 </odoo>
