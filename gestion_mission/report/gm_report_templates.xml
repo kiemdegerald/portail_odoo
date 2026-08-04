@@ -11,8 +11,8 @@
          tableau du membre de la mission + informations de la mission.
          ================================================================== -->
     <template id="gm_report_mission_infos">
-        <p class="mb-1"><strong>Membre de la mission :</strong></p>
-        <p class="fst-italic mb-1">Personne concernée et fonction</p>
+        <p class="mb-1"><strong>Membre<t t-if="len(doc.membre_ids) > 1">s</t> de la mission :</strong></p>
+        <p class="fst-italic mb-1">Personne<t t-if="len(doc.membre_ids) > 1">s</t> concernée<t t-if="len(doc.membre_ids) > 1">s</t> et fonction</p>
         <table style="border-collapse: collapse; width: 100%; margin-bottom: 12px;">
             <thead>
                 <tr>
@@ -22,7 +22,12 @@
                 </tr>
             </thead>
             <tbody>
-                <tr>
+                <tr t-foreach="doc.membre_ids" t-as="membre">
+                    <td style="border: 1px solid black; padding: 4px; text-align: center;"><t t-out="'%02d' % (membre_index + 1)"/></td>
+                    <td style="border: 1px solid black; padding: 4px;"><span t-field="membre.employee_id.name"/></td>
+                    <td style="border: 1px solid black; padding: 4px;"><t t-out="membre.job_title or ''"/></td>
+                </tr>
+                <tr t-if="not doc.membre_ids">
                     <td style="border: 1px solid black; padding: 4px; text-align: center;">01</td>
                     <td style="border: 1px solid black; padding: 4px;"><span t-field="doc.employee_id.name"/></td>
                     <td style="border: 1px solid black; padding: 4px;"><t t-out="doc.job_title or ''"/></td>
@@ -98,13 +103,13 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr>
-                                    <td style="border: 1px solid black; padding: 4px;"><span t-field="doc.employee_id.name"/></td>
-                                    <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="doc.indemnite_total"
+                                <tr t-foreach="doc.membre_ids" t-as="membre">
+                                    <td style="border: 1px solid black; padding: 4px;"><span t-field="membre.employee_id.name"/></td>
+                                    <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="membre.indemnite_total"
                                               t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
-                                    <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="doc.autres_frais"
+                                    <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="membre.autres_frais"
                                               t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
-                                    <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="doc.total_du"
+                                    <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="membre.total_du"
                                               t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
                                 </tr>
                                 <tr class="fw-bold">
@@ -124,6 +129,8 @@
                         </p>
                         <ul t-if="doc.frais_ids" class="fst-italic">
                             <li t-foreach="doc.frais_ids" t-as="frais">
+                                <t t-if="len(doc.membre_ids) > 1 and frais.membre_id">
+                                    <t t-out="frais.membre_id.employee_id.name"/> — </t>
                                 <span t-field="frais.description"/> :
                                 <span t-field="frais.montant"
                                       t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/>
