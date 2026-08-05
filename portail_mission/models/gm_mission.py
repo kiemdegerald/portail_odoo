@@ -20,9 +20,10 @@ class GmMission(models.Model):
     # ------------------------------------------------------------------
     # Envoi générique (copié du pattern éprouvé du module portail)
     # ------------------------------------------------------------------
-    def _pm_send_template(self, xmlid):
+    def _pm_send_template(self, xmlid, email_to=None):
         """Envoie un modèle d'email pour cette mission, sans jamais
-        bloquer le flux métier : tout échec est simplement journalisé."""
+        bloquer le flux métier : tout échec est simplement journalisé.
+        ``email_to`` force le destinataire (envois par membre)."""
         self.ensure_one()
         template = self.env.ref(xmlid, raise_if_not_found=False)
         if not template:
@@ -35,10 +36,14 @@ class GmMission(models.Model):
             email_from = (
                 self.env["ir.mail_server"]._get_default_from_address()
                 or self.company_id.email)
-            email_values = {"email_from": email_from} if email_from else None
+            email_values = {}
+            if email_from:
+                email_values["email_from"] = email_from
+            if email_to:
+                email_values["email_to"] = email_to
             template.sudo().send_mail(
                 self.id, force_send=True, raise_exception=False,
-                email_values=email_values)
+                email_values=email_values or None)
         except Exception:
             _logger.exception(
                 "Portail missions : échec d'envoi de l'email %s pour la "
@@ -62,6 +67,17 @@ class GmMission(models.Model):
             if mission._pm_employee_email(mission.employee_id):
                 mission._pm_send_template(xmlid)
 
+    def _pm_notify_membres(self, xmlid):
+        """Un email PAR MEMBRE de la mission (chacun est concerné —
+        ex. mission validée), salutation nominative via le contexte."""
+        for mission in self:
+            for membre in mission.membre_ids:
+                email = mission._pm_employee_email(membre.employee_id)
+                if email:
+                    mission.with_context(
+                        pm_recipient_name=membre.employee_id.name,
+                    )._pm_send_template(xmlid, email_to=email)
+
     # ------------------------------------------------------------------
     # Déclencheurs : après chaque action du cycle de vie
     # ------------------------------------------------------------------
@@ -77,7 +93,8 @@ class GmMission(models.Model):
                 # étape suivante activée -> prévenir son valideur
                 mission._pm_notify_current_validator()
             elif mission.state == "validated":
-                mission._pm_notify_employee(
+                # tous les membres sont informés, pas seulement le chef
+                mission._pm_notify_membres(
                     "portail_mission.mail_mission_validated")
         return res
 

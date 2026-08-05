@@ -44,6 +44,9 @@ MISSION_SUCCESS_MESSAGES = {
     "deleted": "Votre demande de mission a été supprimée.",
     "reset": "Votre demande de mission a été remise en brouillon.",
     "decided": "Votre décision a été enregistrée.",
+    "created_for": "Le brouillon a été créé pour votre collaborateur : il "
+                   "pourra le compléter et le soumettre depuis son portail.",
+    "submitted_for": "La demande a été soumise au nom de votre collaborateur.",
 }
 
 
@@ -52,6 +55,18 @@ class PortailMission(PortailCommon):
     # ------------------------------------------------------------------
     # Accueil /my : compteurs des cartes + drapeau valideur
     # ------------------------------------------------------------------
+    def _gm_can(self, key):
+        """Réglage « qui peut initier » (Paramètres > Missions), "1"/"0"."""
+        return request.env["ir.config_parameter"].sudo().get_param(
+            key, "1") == "1"
+
+    def _get_direct_reports(self, employees):
+        """Collaborateurs DIRECTS (parent_id) de l'employé courant."""
+        if not employees:
+            return request.env["hr.employee"].sudo()
+        return request.env["hr.employee"].sudo().search(
+            [("parent_id", "in", employees.ids)])
+
     def _is_mission_validator(self):
         """L'utilisateur courant est-il valideur d'au moins une mission
         (une étape de circuit à son nom, quel qu'en soit l'état) ?"""
@@ -76,7 +91,7 @@ class PortailMission(PortailCommon):
         employees = self._get_portal_employees()
         if "mission_count" in counters:
             values["mission_count"] = request.env["gm.mission"].sudo().search_count(
-                [("employee_id", "in", employees.ids)]
+                self._my_missions_domain(employees)
             ) if employees else 0
         if "team_mission_count" in counters:
             values["team_mission_count"] = request.env["gm.mission"].sudo().search_count(
@@ -87,18 +102,32 @@ class PortailMission(PortailCommon):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-    def _get_mission_or_raise(self, mission_id, require_states=None):
-        """La mission, après contrôle qu'elle appartient à l'employé courant.
+    def _my_missions_domain(self, employees):
+        """Les missions de l'employé : celles dont il est demandeur (chef
+        de mission) OU MEMBRE (missions groupées)."""
+        return ["|", ("employee_id", "in", employees.ids),
+                ("membre_ids.employee_id", "in", employees.ids)]
 
-        ``require_states`` restreint en plus aux statuts autorisés pour
-        l'action demandée (ex. modifier = brouillon uniquement).
+    def _get_mission_or_raise(self, mission_id, require_states=None,
+                              require_chef=False):
+        """La mission, après contrôle que l'employé courant en est le CHEF
+        (demandeur) ou un MEMBRE.
+
+        ``require_states`` restreint aux statuts autorisés pour l'action ;
+        ``require_chef`` réserve l'action au chef de mission (modifier,
+        soumettre, retirer, supprimer — un simple membre consulte).
         """
         employees = self._get_portal_employees()
         mission = request.env["gm.mission"].sudo().browse(mission_id).exists()
         if not mission:
             raise MissingError(_("Cette mission n'existe pas."))
-        if mission.employee_id not in employees:
+        is_chef = mission.employee_id in employees
+        is_member = bool(mission.membre_ids.employee_id & employees)
+        if not (is_chef or is_member):
             raise AccessError(_("Vous n'avez pas accès à cette mission."))
+        if require_chef and not is_chef:
+            raise AccessError(_(
+                "Seul le chef de mission peut effectuer cette action."))
         if require_states and mission.state not in require_states:
             raise AccessError(_(
                 "Cette action n'est plus possible au statut actuel de la "
@@ -108,17 +137,20 @@ class PortailMission(PortailCommon):
     def _get_mission_zones(self):
         return request.env["gm.mission.zone"].sudo().search([])
 
-    def _parse_frais_lines(self, error):
-        """Lignes « autres frais » du formulaire (paires description /
-        montant, lignes vides ignorées). Alimente ``error`` si une ligne
-        est incomplète ou invalide."""
+    def _parse_frais_lines(self, error, allowed_emp_ids=None):
+        """Lignes « autres frais » du formulaire (description / montant /
+        missionnaire, lignes vides ignorées). ``allowed_emp_ids`` : ids
+        d'employés autorisés comme missionnaire (None = ignorer le champ).
+        Alimente ``error`` si une ligne est incomplète ou invalide."""
         form = request.httprequest.form
         descriptions = form.getlist("frais_description")
         montants = form.getlist("frais_montant")
+        membres = form.getlist("frais_membre")
         lines = []
         for idx, (desc, montant) in enumerate(zip(descriptions, montants), 1):
             desc = (desc or "").strip()
             montant = (montant or "").strip().replace(",", ".").replace(" ", "")
+            membre = (membres[idx - 1] if idx - 1 < len(membres) else "").strip()
             if not desc and not montant:
                 continue
             if not desc:
@@ -135,11 +167,23 @@ class PortailMission(PortailCommon):
                 error["frais"] = _("Ligne de frais %s (« %s ») : le montant "
                                    "doit être positif.", idx, desc)
                 continue
-            lines.append({"description": desc, "montant": value})
+            employee_id = None
+            if allowed_emp_ids is not None and membre:
+                if membre.isdigit() and int(membre) in allowed_emp_ids:
+                    employee_id = int(membre)
+                else:
+                    error["frais"] = _(
+                        "Ligne de frais %s (« %s ») : le missionnaire "
+                        "choisi n'est pas membre de la mission.", idx, desc)
+                    continue
+            lines.append({"description": desc, "montant": value,
+                          "employee_id": employee_id})
         return lines
 
-    def _validate_mission_form(self, post, zones):
-        """Valide les champs soumis. Retourne (erreurs, valeurs ORM)."""
+    def _validate_mission_form(self, post, zones, allowed_emp_ids=None):
+        """Valide les champs soumis. Retourne (erreurs, valeurs ORM,
+        lignes de frais). ``allowed_emp_ids`` : employés qui peuvent être
+        missionnaires des frais (None = champ ignoré)."""
         error = {}
         vals = {}
 
@@ -187,7 +231,7 @@ class PortailMission(PortailCommon):
 
         vals["description"] = (post.get("description") or "").strip() or False
 
-        frais = self._parse_frais_lines(error)
+        frais = self._parse_frais_lines(error, allowed_emp_ids)
         return error, vals, frais
 
     def _mission_form_defaults(self, mission=None):
@@ -207,7 +251,8 @@ class PortailMission(PortailCommon):
                            if mission.date_retour else "",
             "description": mission.description or "",
             "frais": [{"description": f.description,
-                       "montant": "%g" % f.montant}
+                       "montant": "%g" % f.montant,
+                       "employee_id": f.membre_id.employee_id.id or ""}
                       for f in mission.frais_ids],
         }
 
@@ -215,10 +260,14 @@ class PortailMission(PortailCommon):
         """Re-affichage du formulaire après erreur : valeurs telles que
         saisies (y compris les lignes de frais)."""
         form = request.httprequest.form
-        frais = [{"description": d, "montant": m}
-                 for d, m in zip(form.getlist("frais_description"),
-                                 form.getlist("frais_montant"))
-                 if (d or "").strip() or (m or "").strip()]
+        membres = form.getlist("frais_membre")
+        frais = []
+        for i, (d, m) in enumerate(zip(form.getlist("frais_description"),
+                                       form.getlist("frais_montant"))):
+            if (d or "").strip() or (m or "").strip():
+                frais.append({"description": d, "montant": m,
+                              "employee_id": (membres[i]
+                                              if i < len(membres) else "")})
         return {
             "objet": post.get("objet") or "",
             "destination": post.get("destination") or "",
@@ -230,24 +279,35 @@ class PortailMission(PortailCommon):
             "frais": frais,
         }
 
-    def _render_mission_form(self, mission, form_values, error):
+    def _render_mission_form(self, mission, form_values, error, **extra):
         values = {
             "mission": mission,
             "form_values": form_values,
             "error": error,
             "zones": self._get_mission_zones(),
             "transports": MISSION_TRANSPORTS,
+            "team_mode": False,
             "page_name": "mission",
         }
+        values.update(extra)
         return request.render("portail_mission.portal_my_mission_form", values)
 
     def _apply_frais(self, mission, frais):
         """Remplace les lignes de frais de la mission par celles du
-        formulaire (uniquement en brouillon : verrou métier sinon)."""
+        formulaire (uniquement en brouillon : verrou métier sinon). Le
+        missionnaire est résolu employé -> ligne membre ; sans choix, le
+        frais ira au chef de mission à la soumission."""
         mission.frais_ids.sudo().unlink()
         if frais:
+            emp_to_membre = {m.employee_id.id: m.id
+                             for m in mission.membre_ids}
             request.env["gm.mission.frais"].sudo().create([
-                dict(line, mission_id=mission.id) for line in frais])
+                {"mission_id": mission.id,
+                 "description": line["description"],
+                 "montant": line["montant"],
+                 "membre_id": emp_to_membre.get(line.get("employee_id"))
+                              or False}
+                for line in frais])
 
     # ------------------------------------------------------------------
     # Routes — consultation
@@ -257,7 +317,7 @@ class PortailMission(PortailCommon):
     def portal_my_missions(self, page=1, **kw):
         employees = self._get_portal_employees()
         Mission = request.env["gm.mission"].sudo()
-        domain = [("employee_id", "in", employees.ids)]
+        domain = self._my_missions_domain(employees)
 
         mission_count = Mission.search_count(domain)
         pager = portal_pager(
@@ -274,6 +334,8 @@ class PortailMission(PortailCommon):
             "missions": missions,
             "mission_state_labels": MISSION_STATE_LABELS,
             "success_message": MISSION_SUCCESS_MESSAGES.get(kw.get("success")),
+            "can_create": bool(employees) and self._gm_can(
+                "gm.portal_employee_can_create"),
             "page_name": "mission",
             "pager": pager,
             "default_url": "/my/missions",
@@ -297,6 +359,7 @@ class PortailMission(PortailCommon):
             as_validator
             and mission.state == "submitted"
             and mission.current_validator_id in employees
+            and not (mission.membre_ids.employee_id & employees)
             and mission.employee_id not in employees)
         values = {
             "mission": mission,
@@ -305,6 +368,7 @@ class PortailMission(PortailCommon):
             "success_message": success,
             "error_message": error,
             "is_validator_view": as_validator,
+            "is_chef": mission.employee_id in employees,
             "can_decide_now": can_decide_now,
             "page_name": "team_mission" if as_validator else "mission",
         }
@@ -317,8 +381,8 @@ class PortailMission(PortailCommon):
                 type="http", auth="user", website=True, methods=["GET", "POST"])
     def portal_my_mission_new(self, **post):
         employees = self._get_portal_employees()
-        if not employees:
-            return request.redirect("/my")
+        if not employees or not self._gm_can("gm.portal_employee_can_create"):
+            return request.redirect("/my/missions")
         employee = employees[:1]
         zones = self._get_mission_zones()
 
@@ -358,13 +422,15 @@ class PortailMission(PortailCommon):
     def portal_my_mission_edit(self, mission_id=None, **post):
         try:
             mission = self._get_mission_or_raise(
-                mission_id, require_states=("draft",))
+                mission_id, require_states=("draft",), require_chef=True)
         except (AccessError, MissingError):
             return request.redirect("/my/missions")
         zones = self._get_mission_zones()
 
         if request.httprequest.method == "POST":
-            error, vals, frais = self._validate_mission_form(post, zones)
+            error, vals, frais = self._validate_mission_form(
+                post, zones,
+                allowed_emp_ids=mission.membre_ids.employee_id.ids)
             if not error:
                 mission.sudo().write(vals)
                 self._apply_frais(mission, frais)
@@ -392,7 +458,7 @@ class PortailMission(PortailCommon):
     def portal_my_mission_submit(self, mission_id=None, **post):
         try:
             mission = self._get_mission_or_raise(
-                mission_id, require_states=("draft",))
+                mission_id, require_states=("draft",), require_chef=True)
         except (AccessError, MissingError):
             return request.redirect("/my/missions")
         try:
@@ -410,7 +476,8 @@ class PortailMission(PortailCommon):
         d'une demande refusée — la règle vit dans action_reset_to_draft."""
         try:
             mission = self._get_mission_or_raise(
-                mission_id, require_states=("submitted", "refused"))
+                mission_id, require_states=("submitted", "refused"),
+                require_chef=True)
         except (AccessError, MissingError):
             return request.redirect("/my/missions")
         employee = self._get_portal_employees()[:1]
@@ -427,10 +494,11 @@ class PortailMission(PortailCommon):
     def portal_my_mission_delete(self, mission_id=None, **post):
         try:
             mission = self._get_mission_or_raise(
-                mission_id, require_states=("draft",))
+                mission_id, require_states=("draft",), require_chef=True)
         except (AccessError, MissingError):
             return request.redirect("/my/missions")
         mission.frais_ids.sudo().unlink()
+        mission.membre_ids.sudo().unlink()
         mission.sudo().unlink()
         return request.redirect("/my/missions?success=deleted")
 
@@ -457,8 +525,11 @@ class PortailMission(PortailCommon):
             return request.redirect("/my/missions")
         employees = self._get_portal_employees()
         mission = request.env["gm.mission"].sudo().browse(mission_id).exists()
+        # demandeur, MEMBRE (décision : tous les membres voient la fiche
+        # complète) ou valideur du circuit
         allowed = mission and (
             mission.employee_id in employees
+            or (mission.membre_ids.employee_id & employees)
             or mission.validation_line_ids.filtered(
                 lambda l: l.validator_id in employees))
         if not (allowed and mission.state == "validated"):
@@ -520,11 +591,86 @@ class PortailMission(PortailCommon):
             "history": history,
             "mission_state_labels": MISSION_STATE_LABELS,
             "success_message": MISSION_SUCCESS_MESSAGES.get(kw.get("success")),
+            "can_create_for_team": bool(self._get_direct_reports(employees))
+                                   and self._gm_can("gm.portal_chef_can_create"),
             "page_name": "team_mission",
             "pager": pager,
             "default_url": "/my/team/missions",
         }
         return request.render("portail_mission.portal_team_missions", values)
+
+    @http.route(["/my/team/missions/new"],
+                type="http", auth="user", website=True, methods=["GET", "POST"])
+    def portal_team_mission_new(self, **post):
+        """Le chef de service crée une demande AU NOM d'un collaborateur
+        direct : brouillon (l'agent complète et soumet — modèle délégué)
+        ou soumission directe. Canal activable dans Paramètres > Missions."""
+        employees = self._get_portal_employees()
+        reports = self._get_direct_reports(employees)
+        if not reports or not self._gm_can("gm.portal_chef_can_create"):
+            return request.redirect("/my/team/missions")
+        # périmètre décidé : ses collaborateurs directs + lui-même
+        pool = reports | employees
+        zones = self._get_mission_zones()
+
+        if request.httprequest.method == "POST":
+            error, vals, frais = self._validate_mission_form(
+                post, zones, allowed_emp_ids=pool.ids)
+            emp_id = (post.get("employee_id") or "").strip()
+            if not emp_id.isdigit() or int(emp_id) not in pool.ids:
+                error["employee_id"] = _(
+                    "Veuillez choisir le chef de mission parmi vos "
+                    "collaborateurs directs (ou vous-même).")
+            membre_ids = []
+            for raw in request.httprequest.form.getlist("membre_ids"):
+                if raw.isdigit() and int(raw) in pool.ids:
+                    membre_ids.append(int(raw))
+                elif raw:
+                    error["membre_ids"] = _(
+                        "Un membre choisi n'appartient pas à votre équipe.")
+            if not error:
+                chef = pool.browse(int(emp_id))
+                vals.update({
+                    "employee_id": chef.id,
+                    "company_id": (chef.company_id
+                                   or request.env.company).id,
+                })
+                mission = request.env["gm.mission"].sudo().create(vals)
+                # le chef de mission est déjà membre (auto) ; on ajoute
+                # les autres membres cochés
+                for mid in membre_ids:
+                    if mid != chef.id:
+                        request.env["gm.mission.membre"].sudo().create({
+                            "mission_id": mission.id, "employee_id": mid})
+                self._apply_frais(mission, frais)
+                mission.message_post(body=_(
+                    "Demande créée par %s (supérieur hiérarchique) via le "
+                    "portail.", employees[:1].name))
+                if post.get("action") == "submit":
+                    try:
+                        mission.sudo().action_submit()
+                        return request.redirect(
+                            "/my/team/missions?success=submitted_for")
+                    except (UserError, ValidationError) as exc:
+                        mission.frais_ids.sudo().unlink()
+                        mission.membre_ids.sudo().unlink()
+                        mission.sudo().unlink()
+                        error["global"] = exc.args[0] if exc.args else str(exc)
+                else:
+                    return request.redirect(
+                        "/my/team/missions?success=created_for")
+            return self._render_mission_form(
+                None, self._form_values_from_post(post), error,
+                team_mode=True, collaborators=pool,
+                selected_employee_id=emp_id,
+                selected_membre_ids=membre_ids,
+                page_name="team_mission")
+
+        return self._render_mission_form(
+            None, self._mission_form_defaults(), {},
+            team_mode=True, collaborators=pool,
+            selected_employee_id="", selected_membre_ids=[],
+            page_name="team_mission")
 
     @http.route(["/my/team/missions/<int:mission_id>"],
                 type="http", auth="user", website=True)

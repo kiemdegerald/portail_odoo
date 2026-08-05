@@ -56,7 +56,7 @@
                 <t t-esc="success_message"/>
             </div>
 
-            <div class="mt-3 mb-2">
+            <div t-if="can_create" class="mt-3 mb-2">
                 <a href="/my/missions/new" class="btn btn-sm btn-primary">
                     <i class="fa fa-plus"/> Nouvelle demande de mission
                 </a>
@@ -71,6 +71,7 @@
                 <thead>
                     <tr class="active">
                         <th>Numéro</th>
+                        <th>Chef de mission</th>
                         <th>Objet</th>
                         <th>Destination</th>
                         <th>Départ</th>
@@ -87,6 +88,7 @@
                                 <t t-esc="m.name"/>
                             </a>
                         </td>
+                        <td><t t-esc="m.employee_id.name"/></td>
                         <td><t t-esc="m.objet"/></td>
                         <td><t t-esc="m.destination"/></td>
                         <td><span t-field="m.date_depart"/></td>
@@ -196,8 +198,9 @@
                         </div>
                     </div>
 
-                    <!-- Actions du demandeur selon le statut -->
-                    <div class="mb-3" t-if="not is_validator_view">
+                    <!-- Actions du demandeur selon le statut (chef uniquement :
+                         un simple membre consulte) -->
+                    <div class="mb-3" t-if="not is_validator_view and is_chef">
                         <t t-if="mission.state == 'draft'">
                             <a t-attf-href="/my/missions/#{mission.id}/edit"
                                class="btn btn-sm btn-primary">
@@ -287,23 +290,66 @@
                         </ul>
                     </t>
 
-                    <!-- Montants : figés à la soumission, donc rien à montrer en brouillon -->
+                    <!-- Membres visibles dès le brouillon (sans montants) -->
+                    <t t-if="mission.state == 'draft' and len(mission.membre_ids) > 1">
+                        <h5 class="mt-3">Membres de la mission</h5>
+                        <ul>
+                            <li t-foreach="mission.membre_ids" t-as="membre">
+                                <t t-esc="membre.employee_id.name"/>
+                                <t t-if="membre.job_title"> — <t t-esc="membre.job_title"/></t>
+                                <span t-if="membre.is_chef"
+                                      class="badge rounded-pill text-bg-secondary ms-1">Chef de mission</span>
+                            </li>
+                        </ul>
+                    </t>
+
+                    <!-- Montants : figés à la soumission, donc rien à montrer en brouillon.
+                         Décision : tous les membres voient le décompte complet. -->
                     <t t-if="mission.state != 'draft'">
-                        <h5 class="mt-3">Indemnités</h5>
+                        <h5 class="mt-3">Membres et indemnités</h5>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped">
+                                <thead>
+                                    <tr class="active">
+                                        <th>Membre</th>
+                                        <th>Catégorie</th>
+                                        <th class="text-end">Taux / jour</th>
+                                        <th class="text-end">Indemnité</th>
+                                        <th class="text-end">Autres frais</th>
+                                        <th class="text-end">Total</th>
+                                        <th class="text-end">Avance</th>
+                                        <th class="text-end">Solde</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr t-foreach="mission.membre_ids" t-as="membre">
+                                        <td><t t-esc="membre.employee_id.name"/>
+                                            <span t-if="membre.is_chef"
+                                                  class="badge rounded-pill text-bg-secondary ms-1">Chef</span>
+                                        </td>
+                                        <td><t t-esc="membre.categorie_agent or ''"/></td>
+                                        <td class="text-end"><span t-field="membre.indemnite_jour"
+                                                  t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></td>
+                                        <td class="text-end"><span t-field="membre.indemnite_total"
+                                                  t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></td>
+                                        <td class="text-end"><span t-field="membre.autres_frais"
+                                                  t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></td>
+                                        <td class="text-end"><span t-field="membre.total_du"
+                                                  t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></td>
+                                        <td class="text-end"><span t-field="membre.avance_montant"
+                                                  t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></td>
+                                        <td class="text-end"><span t-field="membre.solde"
+                                                  t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <h5 class="mt-3">Totaux de la mission</h5>
                         <table class="table table-sm">
                             <tbody>
-                                <tr t-if="mission.categorie_agent">
-                                    <th class="w-25">Catégorie</th>
-                                    <td><t t-esc="mission.categorie_agent"/></td>
-                                </tr>
                                 <tr>
-                                    <th>Indemnité journalière</th>
-                                    <td><span t-field="mission.indemnite_jour"
-                                              t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/>
-                                        × <t t-esc="mission.duration"/> jour(s)</td>
-                                </tr>
-                                <tr>
-                                    <th>Indemnité de mission</th>
+                                    <th class="w-25">Indemnité de mission</th>
                                     <td><span t-field="mission.indemnite_total"
                                               t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></td>
                                 </tr>
@@ -312,6 +358,8 @@
                                     <td>
                                         <ul class="list-unstyled mb-0">
                                             <li t-foreach="mission.frais_ids" t-as="frais">
+                                                <t t-if="len(mission.membre_ids) > 1 and frais.membre_id">
+                                                    <t t-esc="frais.membre_id.employee_id.name"/> — </t>
                                                 <t t-esc="frais.description"/> :
                                                 <span t-field="frais.montant"
                                                       t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/>
@@ -407,6 +455,12 @@
 
             <div t-if="success_message" class="alert alert-success mt-3" role="alert">
                 <t t-esc="success_message"/>
+            </div>
+
+            <div t-if="can_create_for_team" class="mt-3 mb-2">
+                <a href="/my/team/missions/new" class="btn btn-sm btn-primary">
+                    <i class="fa fa-plus"/> Créer pour un collaborateur
+                </a>
             </div>
 
             <h5 class="mt-3">En attente de ma décision</h5>
@@ -507,7 +561,8 @@
             <div class="row mt-3">
                 <div class="col-12 col-lg-8">
                     <h4>
-                        <t t-if="mission">Modifier ma demande de mission</t>
+                        <t t-if="team_mode">Nouvelle demande pour un collaborateur</t>
+                        <t t-elif="mission">Modifier ma demande de mission</t>
                         <t t-else="">Nouvelle demande de mission</t>
                     </h4>
 
@@ -516,8 +571,60 @@
                     </div>
 
                     <form method="post"
-                          t-attf-action="#{'/my/missions/%s/edit' % mission.id if mission else '/my/missions/new'}">
+                          t-attf-action="#{'/my/team/missions/new' if team_mode else ('/my/missions/%s/edit' % mission.id if mission else '/my/missions/new')}">
                         <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+
+                        <div t-if="team_mode" class="mb-3">
+                            <label class="form-label" for="gm_employee">Chef de mission (demandeur) *</label>
+                            <select name="employee_id" id="gm_employee" class="form-select">
+                                <option value="">— Choisir le chef de mission —</option>
+                                <option t-foreach="collaborators" t-as="c" t-att-value="c.id"
+                                        t-att-selected="'selected' if selected_employee_id == str(c.id) else None">
+                                    <t t-esc="c.name"/><t t-if="c.job_title"> — <t t-esc="c.job_title"/></t>
+                                </option>
+                            </select>
+                            <div t-if="error.get('employee_id')" class="text-danger small">
+                                <t t-esc="error['employee_id']"/>
+                            </div>
+                        </div>
+
+                        <div t-if="team_mode" class="mb-3">
+                            <label class="form-label" for="gm_membre_pick">Autres membres de la mission</label>
+                            <p class="text-muted small mb-1">
+                                Le chef de mission est inclus d'office. Ajoutez les
+                                autres participants (chacun aura son indemnité
+                                selon sa catégorie).
+                            </p>
+                            <div class="input-group" style="max-width: 480px;">
+                                <select id="gm_membre_pick" class="form-select">
+                                    <option value="">— Choisir un membre —</option>
+                                    <option t-foreach="collaborators" t-as="c" t-att-value="c.id">
+                                        <t t-esc="c.name"/><t t-if="c.job_title"> — <t t-esc="c.job_title"/></t>
+                                    </option>
+                                </select>
+                                <button type="button" class="btn btn-outline-secondary"
+                                        onclick="gmAddMembre()">
+                                    <i class="fa fa-plus"/> Ajouter
+                                </button>
+                            </div>
+                            <ul id="gm_membre_list" class="list-group mt-2" style="max-width: 480px;">
+                                <t t-foreach="collaborators" t-as="c">
+                                    <li t-if="c.id in (selected_membre_ids or [])"
+                                        class="list-group-item d-flex justify-content-between align-items-center"
+                                        t-att-data-emp="c.id">
+                                        <span><t t-esc="c.name"/><t t-if="c.job_title"> — <t t-esc="c.job_title"/></t></span>
+                                        <input type="hidden" name="membre_ids" t-att-value="c.id"/>
+                                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                                onclick="gmDelMembre(this)" title="Retirer ce membre">
+                                            <i class="fa fa-times"/>
+                                        </button>
+                                    </li>
+                                </t>
+                            </ul>
+                            <div t-if="error.get('membre_ids')" class="text-danger small">
+                                <t t-esc="error['membre_ids']"/>
+                            </div>
+                        </div>
 
                         <div class="mb-3">
                             <label class="form-label" for="gm_objet">Objet de la mission *</label>
@@ -596,10 +703,13 @@
                             Billet, visa, inscription... Ces montants s'ajoutent aux
                             indemnités journalières calculées automatiquement.
                         </p>
+                        <t t-set="frais_membre_col"
+                           t-value="team_mode or (mission and len(mission.membre_ids) &gt; 1)"/>
                         <table class="table table-sm align-middle">
                             <thead>
                                 <tr class="active">
                                     <th>Description</th>
+                                    <th t-if="frais_membre_col" style="width: 16rem;">Missionnaire</th>
                                     <th style="width: 12rem;">Montant</th>
                                     <th style="width: 3rem;"/>
                                 </tr>
@@ -608,6 +718,19 @@
                                 <tr t-foreach="form_values['frais']" t-as="fr">
                                     <td><input type="text" name="frais_description" class="form-control"
                                                t-att-value="fr['description']"/></td>
+                                    <td t-if="frais_membre_col">
+                                        <select name="frais_membre" class="form-select"
+                                                t-att-data-selected="fr.get('employee_id') or ''">
+                                            <option value="">Chef de mission</option>
+                                            <t t-if="mission">
+                                                <option t-foreach="mission.membre_ids" t-as="mb"
+                                                        t-att-value="mb.employee_id.id"
+                                                        t-att-selected="'selected' if str(mb.employee_id.id) == str(fr.get('employee_id') or '') else None">
+                                                    <t t-esc="mb.employee_id.name"/>
+                                                </option>
+                                            </t>
+                                        </select>
+                                    </td>
                                     <td><input type="number" name="frais_montant" class="form-control"
                                                t-att-value="fr['montant']" min="1" step="any"
                                                inputmode="decimal"
@@ -621,6 +744,17 @@
                                 </tr>
                                 <tr t-if="not form_values['frais']">
                                     <td><input type="text" name="frais_description" class="form-control"/></td>
+                                    <td t-if="frais_membre_col">
+                                        <select name="frais_membre" class="form-select" data-selected="">
+                                            <option value="">Chef de mission</option>
+                                            <t t-if="mission">
+                                                <option t-foreach="mission.membre_ids" t-as="mb"
+                                                        t-att-value="mb.employee_id.id">
+                                                    <t t-esc="mb.employee_id.name"/>
+                                                </option>
+                                            </t>
+                                        </select>
+                                    </td>
                                     <td><input type="number" name="frais_montant" class="form-control"
                                                min="1" step="any" inputmode="decimal"
                                                onkeydown="return ['e','E','+','-'].indexOf(event.key) === -1"/></td>
@@ -651,7 +785,7 @@
                                     onclick="return confirm('Soumettre cette demande pour validation ?');">
                                 <i class="fa fa-paper-plane"/> Soumettre pour validation
                             </button>
-                            <a t-attf-href="#{'/my/missions/%s' % mission.id if mission else '/my/missions'}"
+                            <a t-attf-href="#{'/my/team/missions' if team_mode else ('/my/missions/%s' % mission.id if mission else '/my/missions')}"
                                class="btn btn-link">Annuler</a>
                         </div>
                     </form>
@@ -664,14 +798,91 @@
                                 row.remove();
                             } else {
                                 row.querySelectorAll('input').forEach(function (i) { i.value = ''; });
+                                row.querySelectorAll('select').forEach(function (s) { s.value = ''; });
                             }
                         }
                         function gmAddFrais() {
                             var body = document.getElementById('gm_frais_body');
                             var row = body.rows[0].cloneNode(true);
                             row.querySelectorAll('input').forEach(function (i) { i.value = ''; });
+                            row.querySelectorAll('select').forEach(function (s) { s.value = ''; s.dataset.selected = ''; });
                             body.appendChild(row);
                         }
+
+                        /* --- membres (mode équipe) : liste déroulante + synchro
+                               des sélecteurs « Missionnaire » des frais --- */
+                        function gmGetMembres() {
+                            var out = [];
+                            var chef = document.getElementById('gm_employee');
+                            if (chef &amp;&amp; chef.value) {
+                                out.push({id: chef.value,
+                                          name: chef.options[chef.selectedIndex].text.trim() + ' (chef)'});
+                            }
+                            document.querySelectorAll('#gm_membre_list li').forEach(function (li) {
+                                out.push({id: li.getAttribute('data-emp'),
+                                          name: li.querySelector('span').textContent.trim()});
+                            });
+                            return out;
+                        }
+                        function gmRefreshFraisMembres() {
+                            if (!document.getElementById('gm_membre_list')) { return; }
+                            var membres = gmGetMembres();
+                            document.querySelectorAll('select[name="frais_membre"]').forEach(function (sel) {
+                                var cur = sel.value || sel.dataset.selected || '';
+                                sel.innerHTML = '';
+                                var def = document.createElement('option');
+                                def.value = '';
+                                def.textContent = 'Chef de mission';
+                                sel.appendChild(def);
+                                membres.forEach(function (m) {
+                                    var o = document.createElement('option');
+                                    o.value = m.id;
+                                    o.textContent = m.name;
+                                    if (m.id === cur) { o.selected = true; }
+                                    sel.appendChild(o);
+                                });
+                            });
+                        }
+                        function gmAddMembre() {
+                            var sel = document.getElementById('gm_membre_pick');
+                            var chef = document.getElementById('gm_employee');
+                            if (!sel || !sel.value) { return; }
+                            if (chef &amp;&amp; chef.value === sel.value) { sel.value = ''; return; }
+                            if (document.querySelector('#gm_membre_list li[data-emp="' + sel.value + '"]')) {
+                                sel.value = '';
+                                return;
+                            }
+                            var li = document.createElement('li');
+                            li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                            li.setAttribute('data-emp', sel.value);
+                            var span = document.createElement('span');
+                            span.textContent = sel.options[sel.selectedIndex].text.trim();
+                            var hidden = document.createElement('input');
+                            hidden.type = 'hidden';
+                            hidden.name = 'membre_ids';
+                            hidden.value = sel.value;
+                            var btn = document.createElement('button');
+                            btn.type = 'button';
+                            btn.className = 'btn btn-sm btn-outline-danger';
+                            btn.innerHTML = '&amp;times;';
+                            btn.title = 'Retirer ce membre';
+                            btn.onclick = function () { gmDelMembre(btn); };
+                            li.appendChild(span);
+                            li.appendChild(hidden);
+                            li.appendChild(btn);
+                            document.getElementById('gm_membre_list').appendChild(li);
+                            sel.value = '';
+                            gmRefreshFraisMembres();
+                        }
+                        function gmDelMembre(btn) {
+                            btn.closest('li').remove();
+                            gmRefreshFraisMembres();
+                        }
+                        (function () {
+                            var chef = document.getElementById('gm_employee');
+                            if (chef) { chef.addEventListener('change', gmRefreshFraisMembres); }
+                            gmRefreshFraisMembres();
+                        })();
                     </script>
                 </div>
             </div>

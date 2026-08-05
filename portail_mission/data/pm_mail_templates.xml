@@ -24,8 +24,6 @@
         <li>Période : du <strong t-out="format_date(object.date_depart)"/>
             au <strong t-out="format_date(object.date_retour)"/>
             (<t t-out="object.duration"/> jours)</li>
-        <li>Total dû estimé : <strong t-out="format_amount(object.total_du, object.currency_id)"/>
-            (dont avance proposée : <t t-out="format_amount(object.avance_montant, object.currency_id)"/>)</li>
     </ul>
     <p style="margin: 16px 0;">
         <a t-attf-href="#{object.get_base_url()}/my/team/missions/#{object.id}"
@@ -46,16 +44,15 @@
             <field name="auto_delete" eval="False"/>
             <field name="body_html" type="html">
 <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
-    <p>Bonjour <t t-out="object.employee_id.name"/>,</p>
-    <p>Votre demande de mission
+    <p>Bonjour <t t-out="ctx.get('pm_recipient_name') or object.employee_id.name"/>,</p>
+    <p>La mission
        (<t t-out="object.objet"/>, <t t-out="object.destination"/>,
        du <strong t-out="format_date(object.date_depart)"/>
-       au <strong t-out="format_date(object.date_retour)"/>) a été
+       au <strong t-out="format_date(object.date_retour)"/>) à laquelle
+       vous participez a été
        <strong style="color: #28a745;">validée</strong>.</p>
-    <p>Ordre de mission n° <strong t-out="object.name"/>.
-       Indemnités : <strong t-out="format_amount(object.total_du, object.currency_id)"/>,
-       dont avance avant départ :
-       <strong t-out="format_amount(object.avance_montant, object.currency_id)"/>.</p>
+    <p>Ordre de mission n° <strong t-out="object.name"/>. Le détail
+       (indemnités, avance) est consultable sur votre portail.</p>
     <p style="margin: 16px 0;">
         <a t-attf-href="#{object.get_base_url()}/my/missions/#{object.id}"
            style="background: #714B67; color: #fff; padding: 10px 18px; border-radius: 4px; text-decoration: none;">
