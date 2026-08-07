@@ -23,6 +23,21 @@
                     <button name="action_reset_to_draft" type="object"
                             string="Remettre en brouillon"
                             invisible="not can_reset"/>
+                    <button name="action_declare_return" type="object"
+                            string="Déclarer le retour" class="btn-primary"
+                            invisible="not can_declare_return"
+                            confirm="Confirmer les dates réelles ? Le décompte sera recalculé."/>
+                    <button name="action_back_to_validated" type="object"
+                            string="Renvoyer la déclaration"
+                            invisible="state != 'returned' or not is_gm_manager"/>
+                    <button name="action_close" type="object"
+                            string="Clôturer la mission" class="btn-primary"
+                            invisible="state != 'returned' or not is_gm_manager"
+                            confirm="Clôturer définitivement cette mission ? Plus aucune modification ne sera possible."/>
+                    <button name="%(gestion_mission.action_gm_decision_cancel)d"
+                            type="action" string="Annuler la mission"
+                            invisible="state not in ('submitted', 'validated') or not is_gm_manager"/>
+                    <field name="can_declare_return" invisible="1"/>
                     <button name="%(gestion_mission.action_report_gm_ordre_mission)d"
                             type="action" string="Imprimer l'ordre de mission"
                             invisible="state != 'validated'"/>
@@ -32,7 +47,7 @@
                     <field name="can_decide" invisible="1"/>
                     <field name="can_reset" invisible="1"/>
                     <field name="state" widget="statusbar"
-                           statusbar_visible="draft,submitted,validated"/>
+                           statusbar_visible="draft,submitted,validated,returned,closed"/>
                 </header>
                 <sheet>
                     <div class="oe_title">
@@ -61,8 +76,27 @@
                             <field name="date_retour" readonly="state != 'draft'"/>
                             <field name="duration"/>
                         </group>
-                        <group string="Suivi" invisible="state != 'refused'">
-                            <field name="refusal_reason"/>
+                        <group string="Retour de mission"
+                               invisible="state not in ('validated', 'returned', 'closed')">
+                            <field name="date_depart_reelle"
+                                   readonly="state in ('closed',) or (state == 'returned' and not is_gm_manager)"/>
+                            <field name="date_retour_reelle"
+                                   readonly="state in ('closed',) or (state == 'returned' and not is_gm_manager)"/>
+                            <field name="duration_reelle"
+                                   invisible="not duration_reelle"/>
+                            <field name="retour_commentaire"
+                                   placeholder="Retour anticipé, prolongation, incidents..."
+                                   readonly="state in ('closed',)"/>
+                            <field name="retour_declare_par_id"
+                                   invisible="state == 'validated'"/>
+                            <field name="retour_date_declaration"
+                                   invisible="state == 'validated'"/>
+                        </group>
+                        <group string="Suivi" invisible="state not in ('refused', 'cancelled')">
+                            <field name="refusal_reason"
+                                   invisible="state != 'refused'"/>
+                            <field name="cancel_reason"
+                                   invisible="state != 'cancelled'"/>
                         </group>
                     </group>
                     <group string="Indemnités" name="indemnites">
@@ -75,7 +109,10 @@
                                    invisible="state == 'draft'"/>
                             <field name="indemnite_total"
                                    invisible="state == 'draft'"/>
-                            <field name="autres_frais"/>
+                            <field name="frais_prevus_total"
+                                   invisible="state not in ('returned', 'closed')"/>
+                            <field name="autres_frais"
+                                   string="Autres frais retenus"/>
                             <field name="total_du"
                                    invisible="state == 'draft'"/>
                         </group>
@@ -84,9 +121,13 @@
                                    invisible="state == 'draft'"
                                    help="Somme des avances par membre (ajustables dans l'onglet Membres)."/>
                             <field name="avance_versee"
-                                   invisible="state != 'validated' or not is_gm_manager"/>
+                                   invisible="state not in ('validated', 'returned', 'closed') or not is_gm_manager"
+                                   readonly="state == 'closed'"/>
                             <field name="solde"
                                    invisible="state == 'draft'"/>
+                            <field name="solde_regle"
+                                   invisible="state not in ('returned', 'closed') or not is_gm_manager"
+                                   readonly="state == 'closed'"/>
                         </group>
                     </group>
                     <group string="Précisions">
@@ -100,7 +141,8 @@
                                    readonly="avance_versee or (state != 'draft' and not is_gm_manager)">
                                 <tree editable="bottom">
                                     <field name="sequence" widget="handle"/>
-                                    <field name="employee_id" options="{'no_create': True}"/>
+                                    <field name="employee_id"
+                                           options="{'no_create': True}"/>
                                     <field name="job_title"/>
                                     <field name="is_chef" string="Chef de mission"/>
                                     <field name="categorie_agent"
@@ -119,10 +161,12 @@
                                 </tree>
                             </field>
                         </page>
-                        <page string="Autres frais (à justifier)" name="frais">
-                            <field name="frais_ids"
-                                   readonly="avance_versee or (state != 'draft' and not is_gm_manager)">
+                        <page string="Frais prévus" name="frais">
+                            <field name="frais_prevus_ids"
+                                   context="{'default_type_frais': 'prevu'}"
+                                   readonly="avance_versee or state in ('returned', 'closed', 'cancelled') or (state != 'draft' and not is_gm_manager)">
                                 <tree editable="bottom">
+                                    <field name="type_frais" column_invisible="1"/>
                                     <field name="membre_id"
                                            domain="[('mission_id', '=', parent.id)]"
                                            options="{'no_create': True}"
@@ -133,8 +177,37 @@
                                 </tree>
                             </field>
                             <group class="oe_subtotal_footer">
-                                <field name="autres_frais" readonly="1"/>
+                                <field name="frais_prevus_total" readonly="1"/>
                             </group>
+                        </page>
+                        <page string="Frais réels (note de frais)" name="frais_reels"
+                              invisible="state not in ('returned', 'closed')">
+                            <field name="frais_reels_ids"
+                                   context="{'default_type_frais': 'reel'}"
+                                   readonly="state == 'closed'">
+                                <tree editable="bottom">
+                                    <field name="type_frais" column_invisible="1"/>
+                                    <field name="membre_id"
+                                           domain="[('mission_id', '=', parent.id)]"
+                                           options="{'no_create': True}"
+                                           placeholder="Chef de mission"/>
+                                    <field name="description"/>
+                                    <field name="montant"/>
+                                    <field name="justificatif_filename" column_invisible="1"/>
+                                    <field name="justificatif" widget="binary"
+                                           filename="justificatif_filename"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                </tree>
+                            </field>
+                            <group class="oe_subtotal_footer">
+                                <field name="autres_frais" readonly="1"
+                                       string="Total frais réels"/>
+                            </group>
+                            <div class="text-muted">
+                                Pré-remplis depuis les frais prévus à la déclaration du
+                                retour. Corrigez les montants réellement engagés et joignez
+                                les justificatifs : ils sont exigés pour clôturer.
+                            </div>
                         </page>
                         <page string="Circuit de validation" name="validation"
                               invisible="not validation_line_ids">
@@ -173,10 +246,10 @@
         <field name="model">gm.mission</field>
         <field name="arch" type="xml">
             <tree string="Missions"
-                  decoration-info="state == 'submitted'"
+                  decoration-info="state in ('submitted', 'returned')"
                   decoration-success="state == 'validated'"
                   decoration-danger="state == 'refused'"
-                  decoration-muted="state == 'draft'">
+                  decoration-muted="state in ('draft', 'closed', 'cancelled')">
                 <field name="name"/>
                 <field name="employee_id"/>
                 <field name="objet"/>
@@ -189,7 +262,7 @@
                        groups="base.group_multi_company"/>
                 <field name="current_validator_id" optional="show"/>
                 <field name="state" widget="badge"
-                       decoration-info="state == 'submitted'"
+                       decoration-info="state in ('submitted', 'returned')"
                        decoration-success="state == 'validated'"
                        decoration-danger="state == 'refused'"/>
             </tree>
@@ -210,8 +283,14 @@
                         domain="[('state', '=', 'submitted')]"/>
                 <filter string="Validées" name="validated"
                         domain="[('state', '=', 'validated')]"/>
+                <filter string="Retours à traiter" name="returned"
+                        domain="[('state', '=', 'returned')]"/>
+                <filter string="Clôturées" name="closed"
+                        domain="[('state', '=', 'closed')]"/>
                 <filter string="Refusées" name="refused"
                         domain="[('state', '=', 'refused')]"/>
+                <filter string="Annulées" name="cancelled"
+                        domain="[('state', '=', 'cancelled')]"/>
                 <separator/>
                 <filter string="Mes demandes" name="my"
                         domain="[('employee_id.user_id', '=', uid)]"/>

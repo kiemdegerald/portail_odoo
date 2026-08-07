@@ -24,7 +24,12 @@
             <tbody>
                 <tr t-foreach="doc.membre_ids" t-as="membre">
                     <td style="border: 1px solid black; padding: 4px; text-align: center;"><t t-out="'%02d' % (membre_index + 1)"/></td>
-                    <td style="border: 1px solid black; padding: 4px;"><span t-field="membre.employee_id.name"/></td>
+                    <td style="border: 1px solid black; padding: 4px;">
+                        <span t-field="membre.employee_id.name"/>
+                        <t t-if="len(doc.membre_ids) &gt; 1 and membre.is_chef">
+                            <br/><span style="font-style: italic; font-size: 90%;">(chef de mission)</span>
+                        </t>
+                    </td>
                     <td style="border: 1px solid black; padding: 4px;"><t t-out="membre.job_title or ''"/></td>
                 </tr>
                 <tr t-if="not doc.membre_ids">
@@ -84,10 +89,18 @@
             <t t-foreach="docs" t-as="doc">
                 <t t-call="web.external_layout">
                     <div class="page">
+                        <t t-set="definitif" t-value="doc.state in ('returned', 'closed')"/>
+                        <t t-set="jours" t-value="doc.duration_reelle if definitif and doc.duration_reelle else doc.duration"/>
                         <h4 class="text-center fw-bold text-decoration-underline mt-3 mb-2">
                             FICHE DE DECOMPTE DES FRAIS DE MISSION
                         </h4>
-                        <p class="fw-bold mb-3">Réf. OM : N°<span t-field="doc.name"/></p>
+                        <p class="fw-bold mb-1">Réf. OM : N°<span t-field="doc.name"/></p>
+                        <p class="fst-italic mb-3">
+                            <t t-if="definitif">Décompte définitif — établi au retour de mission
+                                (du <t t-out="doc.date_depart_reelle and doc.date_depart_reelle.strftime('%d/%m/%Y') or ''"/>
+                                au <t t-out="doc.date_retour_reelle and doc.date_retour_reelle.strftime('%d/%m/%Y') or ''"/>)</t>
+                            <t t-else="">Décompte prévisionnel — établi avant le départ</t>
+                        </p>
                         <t t-call="gestion_mission.gm_report_mission_infos"/>
 
                         <table style="border-collapse: collapse; width: 100%; margin-top: 16px; margin-bottom: 8px;">
@@ -97,14 +110,19 @@
                                     <th colspan="3" style="border: 1px solid black; padding: 4px; text-align: center;">Total reçu par missionnaire</th>
                                 </tr>
                                 <tr>
-                                    <th style="border: 1px solid black; padding: 4px; text-align: center;">Perdiems<br/>(<t t-out="'%02d' % doc.duration"/> jours)</th>
+                                    <th style="border: 1px solid black; padding: 4px; text-align: center;">Perdiems<br/>(<t t-out="'%02d' % jours"/> jours)</th>
                                     <th style="border: 1px solid black; padding: 4px; text-align: center;">Autres frais<br/>(à justifier)</th>
                                     <th style="border: 1px solid black; padding: 4px; text-align: center;">Total</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr t-foreach="doc.membre_ids" t-as="membre">
-                                    <td style="border: 1px solid black; padding: 4px;"><span t-field="membre.employee_id.name"/></td>
+                                    <td style="border: 1px solid black; padding: 4px;">
+                                        <span t-field="membre.employee_id.name"/>
+                                        <t t-if="len(doc.membre_ids) &gt; 1 and membre.is_chef">
+                                            <span style="font-style: italic; font-size: 90%;"> (chef de mission)</span>
+                                        </t>
+                                    </td>
                                     <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="membre.indemnite_total"
                                               t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
                                     <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="membre.autres_frais"
@@ -125,10 +143,12 @@
                         </table>
 
                         <p class="fst-italic mb-1">*Autres frais :
-                            <t t-if="not doc.frais_ids">-</t>
+                            <t t-if="not doc.frais_ids.filtered(lambda f: f.type_frais == ('reel' if definitif else 'prevu'))">-</t>
                         </p>
-                        <ul t-if="doc.frais_ids" class="fst-italic">
-                            <li t-foreach="doc.frais_ids" t-as="frais">
+                        <t t-set="frais_retenus"
+                           t-value="doc.frais_ids.filtered(lambda f: f.type_frais == ('reel' if definitif else 'prevu'))"/>
+                        <ul t-if="frais_retenus" class="fst-italic">
+                            <li t-foreach="frais_retenus" t-as="frais">
                                 <t t-if="len(doc.membre_ids) > 1 and frais.membre_id">
                                     <t t-out="frais.membre_id.employee_id.name"/> — </t>
                                 <span t-field="frais.description"/> :
