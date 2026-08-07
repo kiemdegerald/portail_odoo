@@ -72,11 +72,39 @@ class GmMission(models.Model):
         ("draft", "Brouillon"),
         ("submitted", "Soumise"),
         ("validated", "Validée"),
+        ("returned", "Retour déclaré"),
+        ("closed", "Clôturée"),
         ("refused", "Refusée"),
+        ("cancelled", "Annulée"),
     ], string="Statut", default="draft", required=True, copy=False,
         tracking=True)
     refusal_reason = fields.Text(
         string="Motif du refus", readonly=True, copy=False, tracking=True)
+    cancel_reason = fields.Text(
+        string="Motif de l'annulation", readonly=True, copy=False,
+        tracking=True)
+
+    # --- Retour de mission (note de frais) : réel constaté au retour ---
+    date_depart_reelle = fields.Date(
+        string="Départ réel", copy=False, tracking=True)
+    date_retour_reelle = fields.Date(
+        string="Retour réel", copy=False, tracking=True)
+    duration_reelle = fields.Integer(
+        string="Durée réelle (jours)", compute="_compute_duration_reelle",
+        store=True, help="Nombre de jours réellement effectués, bornes "
+                         "incluses.")
+    retour_commentaire = fields.Text(
+        string="Commentaire de retour", copy=False,
+        help="Précisions du missionnaire sur le déroulement (retour "
+             "anticipé, prolongation, incidents...).")
+    retour_declare_par_id = fields.Many2one(
+        "res.users", string="Retour déclaré par", readonly=True, copy=False)
+    retour_date_declaration = fields.Datetime(
+        string="Date de déclaration du retour", readonly=True, copy=False)
+    solde_regle = fields.Boolean(
+        string="Solde réglé", copy=False, tracking=True,
+        help="À cocher par la finance : complément versé au missionnaire "
+             "ou trop-perçu récupéré.")
 
     # --- Membres et indemnités (photo par MEMBRE, prise à la soumission) ---
     membre_ids = fields.One2many(
@@ -107,10 +135,25 @@ class GmMission(models.Model):
              "inscription...) — cf. fiche de décompte. Saisis en brouillon "
              "par le demandeur, ajustables par le gestionnaire jusqu'au "
              "versement de l'avance.")
+    # Deux vues filtrées sur le même stock de lignes : le filtre doit
+    # être porté par le CHAMP (un `domain` posé sur la vue ne filtre pas
+    # l'affichage d'un one2many).
+    frais_prevus_ids = fields.One2many(
+        "gm.mission.frais", "mission_id", string="Frais prévus",
+        domain=[("type_frais", "=", "prevu")], copy=False)
+    frais_reels_ids = fields.One2many(
+        "gm.mission.frais", "mission_id", string="Frais réels",
+        domain=[("type_frais", "=", "reel")], copy=False)
     autres_frais = fields.Monetary(
         string="Total autres frais", copy=False,
         compute="_compute_autres_frais", store=True,
-        help="Somme des lignes « Autres frais (à justifier) ».")
+        help="Frais PRÉVUS avant le retour, frais RÉELS déclarés à partir "
+             "du retour (décompte définitif).")
+    frais_prevus_total = fields.Monetary(
+        string="Total frais prévus", copy=False,
+        compute="_compute_frais_prevus_total", store=True,
+        help="Rappel du prévisionnel, conservé pour la comparaison une "
+             "fois les frais réels déclarés.")
     total_du = fields.Monetary(
         string="Total dû", compute="_compute_total_du", store=True,
         help="Indemnité de mission + autres frais.")
@@ -144,6 +187,10 @@ class GmMission(models.Model):
         compute="_compute_is_gm_manager",
         help="L'utilisateur courant est-il gestionnaire des missions ? "
              "(pilote l'éditabilité des montants dans la vue)")
+    can_declare_return = fields.Boolean(
+        compute="_compute_can_declare_return",
+        help="Déclaration du retour possible ? (mission validée ; le "
+             "missionnaire lui-même ou un gestionnaire)")
     can_reset = fields.Boolean(
         compute="_compute_can_reset",
         help="Remise en brouillon possible ? Une demande SOUMISE ne peut "
@@ -162,6 +209,16 @@ class GmMission(models.Model):
             else:
                 mission.duration = 0
 
+    @api.depends("date_depart_reelle", "date_retour_reelle")
+    def _compute_duration_reelle(self):
+        for mission in self:
+            if mission.date_depart_reelle and mission.date_retour_reelle:
+                mission.duration_reelle = (
+                    mission.date_retour_reelle
+                    - mission.date_depart_reelle).days + 1
+            else:
+                mission.duration_reelle = 0
+
     @api.constrains("date_depart", "date_retour")
     def _check_dates(self):
         for mission in self:
@@ -171,10 +228,59 @@ class GmMission(models.Model):
                     "La date de retour ne peut pas précéder la date de "
                     "départ."))
 
-    @api.depends("frais_ids.montant")
+    @api.constrains("date_depart_reelle", "date_retour_reelle")
+    def _check_dates_reelles(self):
+        for mission in self:
+            if (mission.date_depart_reelle and mission.date_retour_reelle
+                    and mission.date_retour_reelle
+                    < mission.date_depart_reelle):
+                raise ValidationError(_(
+                    "La date de retour réelle ne peut pas précéder la date "
+                    "de départ réelle."))
+
+    @api.onchange("membre_ids")
+    def _onchange_membre_ids_doublon(self):
+        """Tous les agents restent proposés dans la liste ; c'est le
+        DOUBLON qui est refusé, immédiatement et avec un message (la
+        contrainte d'unicité en base reste le filet de sécurité)."""
+        vus, doublons = [], []
+        for line in self.membre_ids:
+            if not line.employee_id:
+                continue
+            if line.employee_id.id in vus:
+                doublons.append(line.employee_id.name)
+                self.membre_ids -= line
+            else:
+                vus.append(line.employee_id.id)
+        if doublons:
+            return {"warning": {
+                "title": _("Agent déjà membre"),
+                "message": _(
+                    "%s figure déjà parmi les membres de cette mission : "
+                    "un agent ne peut y être inscrit qu'une seule fois.",
+                    ", ".join(doublons)),
+            }}
+
+    def _frais_actifs(self):
+        """Nature des frais qui compte dans le décompte : les PRÉVUS
+        jusqu'au départ, les RÉELS à partir du retour déclaré."""
+        self.ensure_one()
+        return "reel" if self.state in ("returned", "closed") else "prevu"
+
+    @api.depends("frais_ids.montant", "frais_ids.type_frais", "state")
     def _compute_autres_frais(self):
         for mission in self:
-            mission.autres_frais = sum(mission.frais_ids.mapped("montant"))
+            actif = mission._frais_actifs()
+            mission.autres_frais = sum(
+                mission.frais_ids.filtered(
+                    lambda f: f.type_frais == actif).mapped("montant"))
+
+    @api.depends("frais_ids.montant", "frais_ids.type_frais")
+    def _compute_frais_prevus_total(self):
+        for mission in self:
+            mission.frais_prevus_total = sum(
+                mission.frais_ids.filtered(
+                    lambda f: f.type_frais == "prevu").mapped("montant"))
 
     @api.depends("membre_ids.indemnite_total")
     def _compute_indemnite_total(self):
@@ -228,6 +334,22 @@ class GmMission(models.Model):
             "gestion_mission.group_gm_manager")
         for mission in self:
             mission.is_gm_manager = is_manager
+
+    @api.depends_context("uid")
+    @api.depends("state", "employee_id")
+    def _compute_can_declare_return(self):
+        """Le retour se déclare par le CHEF DE MISSION (il répond du
+        déroulement pour toute l'équipe) ou par un gestionnaire, qui peut
+        saisir à sa place."""
+        user_employee = self.env.user.employee_id
+        is_manager = self.env.user.has_group(
+            "gestion_mission.group_gm_manager")
+        for mission in self:
+            mission.can_declare_return = (
+                mission.state == "validated"
+                and (is_manager
+                     or (user_employee
+                         and user_employee == mission.employee_id)))
 
     @api.depends_context("uid")
     @api.depends("state", "employee_id")
@@ -640,6 +762,147 @@ class GmMission(models.Model):
             mission.message_post(body=_(
                 "Circuit terminé — mission validée, ordre de mission %s.",
                 mission.name))
+
+    # ------------------------------------------------------------------
+    # Retour de mission (note de frais), clôture et annulation
+    # ------------------------------------------------------------------
+    def _prepare_frais_reels(self):
+        """À la déclaration du retour, les frais RÉELS sont pré-remplis
+        depuis les PRÉVUS : le missionnaire n'a plus qu'à confirmer,
+        corriger les montants et joindre ses justificatifs. Les prévus
+        restent intacts à côté (comparaison et piste d'audit)."""
+        self.ensure_one()
+        if self.frais_ids.filtered(lambda f: f.type_frais == "reel"):
+            return
+        Frais = self.env["gm.mission.frais"].sudo().with_context(
+            gm_recompute=True)
+        for prevu in self.frais_ids.filtered(lambda f: f.type_frais == "prevu"):
+            Frais.create({
+                "mission_id": self.id,
+                "membre_id": prevu.membre_id.id,
+                "type_frais": "reel",
+                "description": prevu.description,
+                "montant": prevu.montant,
+            })
+
+    def _recompute_indemnites_reelles(self):
+        """Recalcule le décompte DÉFINITIF sur la durée réellement
+        effectuée, au TAUX FIGÉ AU DÉPART (photo de la soumission) : le
+        barème a pu changer entre-temps, le dossier reste jugé sur ses
+        propres bases. L'avance déjà versée n'est pas touchée : c'est le
+        solde qui absorbe l'écart."""
+        self.ensure_one()
+        jours = self.duration_reelle or self.duration
+        for membre in self.membre_ids.with_context(gm_recompute=True):
+            membre.indemnite_total = membre.indemnite_jour * jours
+
+    def action_declare_return(self):
+        """Validée -> Retour déclaré : le missionnaire (ou la RH) constate
+        les dates réelles ; le décompte définitif est recalculé."""
+        for mission in self:
+            if mission.state != "validated":
+                raise UserError(_(
+                    "Seule une mission validée peut faire l'objet d'une "
+                    "déclaration de retour."))
+            if not (mission.date_depart_reelle and mission.date_retour_reelle):
+                raise UserError(_(
+                    "Renseignez les dates réelles de départ et de retour."))
+            if mission.date_depart_reelle < mission.date_depart:
+                raise UserError(_(
+                    "Le départ réel (%(reel)s) ne peut pas précéder le "
+                    "départ prévu et autorisé (%(prevu)s).",
+                    reel=mission.date_depart_reelle.strftime("%d/%m/%Y"),
+                    prevu=mission.date_depart.strftime("%d/%m/%Y")))
+            today = fields.Date.context_today(mission)
+            if mission.date_retour_reelle > today:
+                raise UserError(_(
+                    "Le retour réel (%s) est dans le futur : déclarez le "
+                    "retour une fois la mission effectuée.",
+                    mission.date_retour_reelle.strftime("%d/%m/%Y")))
+            ancien_total = mission.total_du
+            mission._prepare_frais_reels()
+            mission._recompute_indemnites_reelles()
+            mission.write({
+                "state": "returned",
+                "retour_declare_par_id": self.env.uid,
+                "retour_date_declaration": fields.Datetime.now(),
+            })
+            mission.message_post(body=_(
+                "Retour déclaré : du %(du)s au %(au)s (%(jours)s jour(s) "
+                "réels contre %(prevus)s prévus). Décompte définitif : "
+                "%(total)s (était %(ancien)s). Solde : %(solde)s.",
+                du=mission.date_depart_reelle.strftime("%d/%m/%Y"),
+                au=mission.date_retour_reelle.strftime("%d/%m/%Y"),
+                jours=mission.duration_reelle, prevus=mission.duration,
+                total=mission.total_du, ancien=ancien_total,
+                solde=mission.solde))
+
+    def action_back_to_validated(self):
+        """Retour déclaré -> Validée : le gestionnaire renvoie la
+        déclaration au missionnaire pour correction."""
+        for mission in self:
+            if mission.state != "returned":
+                raise UserError(_("Cette mission n'est pas au stade du "
+                                  "retour déclaré."))
+            mission.state = "validated"
+            mission.message_post(body=_(
+                "Déclaration de retour renvoyée pour correction par %s.",
+                self.env.user.name))
+
+    def action_close(self):
+        """Retour déclaré -> Clôturée : décompte définitif accepté et
+        solde réglé. Plus aucune modification ensuite."""
+        for mission in self:
+            if mission.state != "returned":
+                raise UserError(_(
+                    "Seule une mission dont le retour est déclaré peut "
+                    "être clôturée."))
+            sans_justif = mission.frais_ids.filtered(
+                lambda f: f.type_frais == "reel" and not f.justificatif)
+            if sans_justif:
+                raise UserError(_(
+                    "Frais réels sans justificatif : %s. Joignez les "
+                    "pièces (ou supprimez la ligne) avant de clôturer.",
+                    ", ".join(sans_justif.mapped("description"))))
+            if not mission.currency_id.is_zero(mission.solde) \
+                    and not mission.solde_regle:
+                raise UserError(_(
+                    "Le solde de %(solde)s n'est pas réglé : cochez "
+                    "« Solde réglé » une fois le %(sens)s effectué, ou "
+                    "corrigez le décompte.",
+                    solde=mission.solde,
+                    sens=_("versement du complément") if mission.solde > 0
+                         else _("recouvrement du trop-perçu")))
+            mission.state = "closed"
+            mission.message_post(body=_(
+                "Mission clôturée par %(user)s. Décompte définitif : "
+                "%(total)s, avance %(avance)s, solde %(solde)s.",
+                user=self.env.user.name, total=mission.total_du,
+                avance=mission.avance_montant, solde=mission.solde))
+
+    def action_cancel(self, reason=None):
+        """Annulation d'une mission soumise ou validée (l'événement n'a
+        pas eu lieu). Le numéro officiel est CONSERVÉ : une mission
+        numérotée ne disparaît jamais (piste d'audit). Si l'avance a été
+        versée, le solde indique le montant à récupérer."""
+        for mission in self:
+            if mission.state not in ("submitted", "validated"):
+                raise UserError(_(
+                    "Seule une mission soumise ou validée peut être "
+                    "annulée."))
+            if not (reason and reason.strip()):
+                raise UserError(_("Le motif de l'annulation est "
+                                  "obligatoire."))
+            mission.validation_line_ids.filtered(
+                lambda l: l.state in ("waiting", "pending")
+            ).sudo().write({"state": "waiting"})
+            mission.write({"state": "cancelled", "cancel_reason": reason})
+            mission.message_post(body=_(
+                "Mission annulée par %(user)s. Motif : %(reason)s%(avance)s",
+                user=self.env.user.name, reason=reason,
+                avance=(_(" Avance versée de %s à récupérer.",
+                          mission.avance_montant)
+                        if mission.avance_versee else "")))
 
     def action_reset_to_draft(self):
         """Retour en brouillon — deux cas seulement :

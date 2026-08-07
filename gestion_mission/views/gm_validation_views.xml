@@ -56,6 +56,13 @@
         <field name="target">new</field>
         <field name="context">{'default_mission_id': active_id, 'default_action': 'send_back'}</field>
     </record>
+    <record id="action_gm_decision_cancel" model="ir.actions.act_window">
+        <field name="name">Annuler la mission</field>
+        <field name="res_model">gm.decision.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="context">{'default_mission_id': active_id, 'default_action': 'cancel'}</field>
+    </record>
 
     <!-- Fenêtre de décision (refus / renvoi : commentaire obligatoire) -->
     <record id="view_gm_decision_wizard_form" model="ir.ui.view">

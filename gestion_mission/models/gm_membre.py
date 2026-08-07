@@ -42,7 +42,9 @@ class GmMissionMembre(models.Model):
     frais_ids = fields.One2many(
         "gm.mission.frais", "membre_id", string="Frais du membre")
     autres_frais = fields.Monetary(
-        string="Autres frais", compute="_compute_autres_frais", store=True)
+        string="Autres frais", compute="_compute_autres_frais", store=True,
+        help="Frais PRÉVUS avant le retour, frais RÉELS déclarés à partir "
+             "du retour (décompte définitif).")
     total_du = fields.Monetary(
         string="Total dû", compute="_compute_total_du", store=True)
     avance_montant = fields.Monetary(
@@ -55,13 +57,18 @@ class GmMissionMembre(models.Model):
 
     _sql_constraints = [
         ("membre_unique", "unique(mission_id, employee_id)",
-         "Cet employé est déjà membre de la mission."),
+         "Cet agent est déjà membre de la mission : il ne peut y figurer "
+         "qu'une seule fois."),
     ]
 
-    @api.depends("frais_ids.montant")
+    @api.depends("frais_ids.montant", "frais_ids.type_frais",
+                 "mission_id.state")
     def _compute_autres_frais(self):
         for membre in self:
-            membre.autres_frais = sum(membre.frais_ids.mapped("montant"))
+            membre.autres_frais = sum(
+                membre.frais_ids.filtered(
+                    lambda f: f.type_frais == membre.mission_id._frais_actifs()
+                ).mapped("montant"))
 
     @api.depends("indemnite_total", "autres_frais", "avance_montant")
     def _compute_total_du(self):
@@ -74,7 +81,11 @@ class GmMissionMembre(models.Model):
     # (même règle que les lignes de frais).
     # ------------------------------------------------------------------
     def _check_mission_locked(self, missions):
-        if self.env.context.get("gm_migration"):
+        # gm_migration : reprise de données ; gm_recompute : recalcul
+        # système des indemnités au retour de mission (l'avance est alors
+        # déjà versée, mais le décompte définitif doit pouvoir s'écrire).
+        if (self.env.context.get("gm_migration")
+                or self.env.context.get("gm_recompute")):
             return
         for mission in missions:
             if mission.avance_versee:

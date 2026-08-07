@@ -14,6 +14,7 @@ class GmDecisionWizard(models.TransientModel):
     action = fields.Selection([
         ("refuse", "Refuser la demande"),
         ("send_back", "Renvoyer pour correction"),
+        ("cancel", "Annuler la mission"),
     ], string="Décision", required=True, readonly=True)
     comment = fields.Text(
         string="Commentaire", required=True,
@@ -25,6 +26,8 @@ class GmDecisionWizard(models.TransientModel):
             raise UserError(_("Le commentaire est obligatoire."))
         if self.action == "refuse":
             self.mission_id.action_refuse_step(comment=self.comment)
+        elif self.action == "cancel":
+            self.mission_id.action_cancel(reason=self.comment)
         else:
             self.mission_id.action_send_back(comment=self.comment)
         return {"type": "ir.actions.act_window_close"}
