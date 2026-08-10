@@ -148,8 +148,21 @@
                         <t t-esc="error_message"/>
                     </div>
 
-                    <!-- Documents officiels (mission validée) : demandeur ET valideurs -->
-                    <div t-if="mission.state == 'validated'" class="mb-3">
+                    <!-- Retour de mission : réservé au chef de mission -->
+                    <div t-if="can_declare_return" class="alert alert-info" role="alert">
+                        <strong>Vous êtes rentré de mission ?</strong>
+                        Déclarez vos dates réelles et vos frais engagés : le décompte
+                        définitif sera calculé.
+                        <div class="mt-2">
+                            <a t-attf-href="/my/missions/#{mission.id}/retour"
+                               class="btn btn-sm btn-primary">
+                                <i class="fa fa-check"/> Déclarer mon retour
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Documents officiels (mission validée ou soldée) -->
+                    <div t-if="mission.state in ('validated', 'returned', 'closed')" class="mb-3">
                         <a t-attf-href="/my/missions/#{mission.id}/document/ordre"
                            class="btn btn-sm btn-primary">
                             <i class="fa fa-download"/> Ordre de mission (PDF)
@@ -249,6 +262,38 @@
                         <strong>Motif du refus :</strong>
                         <span style="white-space: pre-wrap;" t-esc="mission.refusal_reason"/>
                     </div>
+                    <div t-if="mission.state == 'cancelled'" class="alert alert-danger" role="alert">
+                        <strong>Mission annulée.</strong>
+                        <span t-if="mission.cancel_reason" style="white-space: pre-wrap;"
+                              t-esc="mission.cancel_reason"/>
+                    </div>
+                    <div t-if="mission.state in ('returned', 'closed')"
+                         t-attf-class="alert alert-#{'success' if mission.state == 'closed' else 'info'}"
+                         role="alert">
+                        <t t-if="mission.state == 'closed'"><strong>Mission clôturée.</strong> Décompte définitif arrêté.</t>
+                        <t t-else=""><strong>Retour déclaré.</strong> Le service RH vérifie votre décompte avant le règlement du solde.</t>
+                        <div class="mt-1">
+                            Réalisé du <span t-field="mission.date_depart_reelle"/>
+                            au <span t-field="mission.date_retour_reelle"/>
+                            (<t t-esc="mission.duration_reelle"/> jour(s) contre
+                            <t t-esc="mission.duration"/> prévus).
+                        </div>
+                        <div class="mt-1">
+                            <t t-if="mission.solde &gt; 0">
+                                Complément à vous verser :
+                                <strong><span t-field="mission.solde"
+                                      t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></strong>
+                            </t>
+                            <t t-elif="mission.solde &lt; 0">
+                                Trop-perçu à rembourser :
+                                <strong><span t-field="mission.solde"
+                                      t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></strong>
+                            </t>
+                            <t t-else="">Solde nul : rien à régler.</t>
+                            <span t-if="mission.solde_regle"
+                                  class="badge rounded-pill text-bg-success ms-1">Réglé</span>
+                        </div>
+                    </div>
 
                     <h5 class="mt-3">Informations</h5>
                     <table class="table table-sm">
@@ -279,10 +324,10 @@
 
                     <!-- En brouillon les montants n'existent pas encore, mais les
                          frais prévus (saisie de l'employé) restent visibles -->
-                    <t t-if="mission.state == 'draft' and mission.frais_ids">
+                    <t t-if="mission.state == 'draft' and mission.frais_prevus_ids">
                         <h5 class="mt-3">Frais prévus (à justifier)</h5>
                         <ul>
-                            <li t-foreach="mission.frais_ids" t-as="frais">
+                            <li t-foreach="mission.frais_prevus_ids" t-as="frais">
                                 <t t-esc="frais.description"/> :
                                 <span t-field="frais.montant"
                                       t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/>
@@ -353,11 +398,13 @@
                                     <td><span t-field="mission.indemnite_total"
                                               t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></td>
                                 </tr>
-                                <tr t-if="mission.frais_ids">
+                                <t t-set="frais_retenus"
+                                   t-value="mission.frais_reels_ids if mission.state in ('returned', 'closed') else mission.frais_prevus_ids"/>
+                                <tr t-if="frais_retenus">
                                     <th>Autres frais (à justifier)</th>
                                     <td>
                                         <ul class="list-unstyled mb-0">
-                                            <li t-foreach="mission.frais_ids" t-as="frais">
+                                            <li t-foreach="frais_retenus" t-as="frais">
                                                 <t t-if="len(mission.membre_ids) > 1 and frais.membre_id">
                                                     <t t-esc="frais.membre_id.employee_id.name"/> — </t>
                                                 <t t-esc="frais.description"/> :
@@ -552,6 +599,180 @@
                     </tr>
                 </tbody>
             </t>
+        </t>
+    </template>
+
+    <!-- ================= Déclaration du retour de mission ================= -->
+    <template id="portal_my_mission_retour" name="Déclarer mon retour de mission">
+        <t t-call="portal.portal_layout">
+            <div class="row mt-3">
+                <div class="col-12 col-lg-8">
+                    <h4>Déclarer mon retour — mission <t t-esc="mission.name"/></h4>
+                    <p class="text-muted">
+                        Indiquez les dates réellement effectuées : l'indemnité est
+                        recalculée sur cette base. Déclarez ensuite les frais que vous
+                        avez réellement engagés, justificatifs à l'appui.
+                    </p>
+
+                    <div t-if="error.get('global')" class="alert alert-danger" role="alert">
+                        <t t-esc="error['global']"/>
+                    </div>
+
+                    <form method="post" enctype="multipart/form-data"
+                          t-attf-action="/my/missions/#{mission.id}/retour">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+
+                        <div class="alert alert-light" role="alert">
+                            <strong>Prévu :</strong> du <span t-field="mission.date_depart"/>
+                            au <span t-field="mission.date_retour"/>
+                            (<t t-esc="mission.duration"/> jour(s))
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label" for="gm_dep_reel">Date de départ réelle *</label>
+                                <input type="date" name="date_depart_reelle" id="gm_dep_reel"
+                                       class="form-control" required="required"
+                                       t-att-value="form_values['date_depart_reelle']"/>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label" for="gm_ret_reel">Date de retour réelle *</label>
+                                <input type="date" name="date_retour_reelle" id="gm_ret_reel"
+                                       class="form-control" required="required"
+                                       t-att-value="form_values['date_retour_reelle']"/>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="gm_ret_com">Commentaire</label>
+                            <textarea name="retour_commentaire" id="gm_ret_com" class="form-control"
+                                      rows="2"
+                                      placeholder="Retour anticipé, prolongation, incidents..."><t t-esc="form_values['retour_commentaire']"/></textarea>
+                        </div>
+
+                        <label class="form-label">Frais réellement engagés</label>
+                        <p class="text-muted small mb-1">
+                            Pré-remplis avec ce qui était prévu : corrigez les montants
+                            réels et joignez le justificatif de chaque ligne (PDF, photo
+                            ou scan). Les justificatifs sont exigés pour clôturer.
+                        </p>
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr class="active">
+                                    <th>Description</th>
+                                    <th t-if="len(mission.membre_ids) &gt; 1" style="width: 14rem;">Missionnaire</th>
+                                    <th style="width: 10rem;">Montant</th>
+                                    <th style="width: 16rem;">Justificatif</th>
+                                    <th style="width: 3rem;"/>
+                                </tr>
+                            </thead>
+                            <tbody id="gm_reel_body">
+                                <tr t-foreach="form_values['frais']" t-as="fr">
+                                    <td><input type="text" name="reel_description" class="form-control"
+                                               t-att-value="fr['description']"/></td>
+                                    <td t-if="len(mission.membre_ids) &gt; 1">
+                                        <select name="reel_membre" class="form-select">
+                                            <option value="">Chef de mission</option>
+                                            <option t-foreach="mission.membre_ids" t-as="mb"
+                                                    t-att-value="mb.employee_id.id"
+                                                    t-att-selected="'selected' if str(mb.employee_id.id) == str(fr.get('employee_id') or '') else None">
+                                                <t t-esc="mb.employee_id.name"/>
+                                            </option>
+                                        </select>
+                                    </td>
+                                    <td><input type="number" name="reel_montant" class="form-control"
+                                               t-att-value="fr['montant']" min="1" step="any"
+                                               inputmode="decimal"
+                                               onkeydown="return ['e','E','+','-'].indexOf(event.key) === -1"/></td>
+                                    <td>
+                                        <input type="file" name="reel_justificatif" class="form-control form-control-sm"
+                                               accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"/>
+                                        <t t-if="fr.get('justificatif')">
+                                            <input type="hidden" name="reel_garder" value="1"/>
+                                            <small class="text-success">
+                                                <i class="fa fa-paperclip"/> <t t-esc="fr['justificatif']"/> (conservé)
+                                            </small>
+                                        </t>
+                                        <input t-else="" type="hidden" name="reel_garder" value="0"/>
+                                    </td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                                onclick="gmDelReel(this)" title="Retirer cette ligne">
+                                            <i class="fa fa-times"/>
+                                        </button>
+                                    </td>
+                                </tr>
+                                <tr t-if="not form_values['frais']">
+                                    <td><input type="text" name="reel_description" class="form-control"/></td>
+                                    <td t-if="len(mission.membre_ids) &gt; 1">
+                                        <select name="reel_membre" class="form-select">
+                                            <option value="">Chef de mission</option>
+                                            <option t-foreach="mission.membre_ids" t-as="mb"
+                                                    t-att-value="mb.employee_id.id">
+                                                <t t-esc="mb.employee_id.name"/>
+                                            </option>
+                                        </select>
+                                    </td>
+                                    <td><input type="number" name="reel_montant" class="form-control"
+                                               min="1" step="any" inputmode="decimal"
+                                               onkeydown="return ['e','E','+','-'].indexOf(event.key) === -1"/></td>
+                                    <td>
+                                        <input type="file" name="reel_justificatif" class="form-control form-control-sm"
+                                               accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"/>
+                                        <input type="hidden" name="reel_garder" value="0"/>
+                                    </td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                                onclick="gmDelReel(this)" title="Retirer cette ligne">
+                                            <i class="fa fa-times"/>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <button type="button" class="btn btn-sm btn-outline-secondary mb-3"
+                                onclick="gmAddReel()">
+                            <i class="fa fa-plus"/> Ajouter un frais
+                        </button>
+                        <div t-if="error.get('frais')" class="text-danger small mb-2">
+                            <t t-esc="error['frais']"/>
+                        </div>
+
+                        <div class="mt-2">
+                            <button type="submit" class="btn btn-primary"
+                                    onclick="return confirm('Déclarer votre retour ? Le décompte définitif sera recalculé.');">
+                                <i class="fa fa-check"/> Déclarer mon retour
+                            </button>
+                            <a t-attf-href="/my/missions/#{mission.id}" class="btn btn-link">Annuler</a>
+                        </div>
+                    </form>
+
+                    <script type="text/javascript">
+                        function gmDelReel(btn) {
+                            var body = document.getElementById('gm_reel_body');
+                            var row = btn.closest('tr');
+                            if (body.rows.length > 1) {
+                                row.remove();
+                            } else {
+                                row.querySelectorAll('input').forEach(function (i) {
+                                    if (i.type !== 'hidden') { i.value = ''; }
+                                });
+                            }
+                        }
+                        function gmAddReel() {
+                            var body = document.getElementById('gm_reel_body');
+                            var row = body.rows[0].cloneNode(true);
+                            row.querySelectorAll('input').forEach(function (i) {
+                                if (i.name === 'reel_garder') { i.value = '0'; }
+                                else { i.value = ''; }
+                            });
+                            row.querySelectorAll('select').forEach(function (s) { s.value = ''; });
+                            row.querySelectorAll('small').forEach(function (s) { s.remove(); });
+                            body.appendChild(row);
+                        }
+                    </script>
+                </div>
+            </div>
         </t>
     </template>
 

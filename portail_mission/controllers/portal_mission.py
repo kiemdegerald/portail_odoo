@@ -10,6 +10,7 @@ méthodes de ``gestion_mission`` (action_submit, action_reset_to_draft...)
 qui portent TOUTES les règles (dates, chevauchement, photo du circuit et
 des montants, retrait réservé au demandeur...).
 """
+import base64
 from datetime import datetime
 
 from odoo import http, _
@@ -17,7 +18,10 @@ from odoo.http import request
 from odoo.exceptions import AccessError, MissingError, UserError, ValidationError
 from odoo.addons.portal.controllers.portal import pager as portal_pager
 
-from odoo.addons.portail.controllers.portal_common import PortailCommon
+from odoo.addons.portail.controllers.portal_common import (
+    PortailCommon,
+    validate_justificatif,
+)
 from odoo.addons.gestion_mission.models.gm_mission import MISSION_TRANSPORTS
 
 # Libellés FR des statuts de mission (gm.mission.state)
@@ -25,7 +29,10 @@ MISSION_STATE_LABELS = {
     "draft": "Brouillon",
     "submitted": "Soumise",
     "validated": "Validée",
+    "returned": "Retour déclaré",
+    "closed": "Clôturée",
     "refused": "Refusée",
+    "cancelled": "Annulée",
 }
 
 # Libellés FR des statuts d'une étape du circuit (gm.mission.validation.state)
@@ -44,6 +51,9 @@ MISSION_SUCCESS_MESSAGES = {
     "deleted": "Votre demande de mission a été supprimée.",
     "reset": "Votre demande de mission a été remise en brouillon.",
     "decided": "Votre décision a été enregistrée.",
+    "returned": "Votre retour de mission a été déclaré. Le décompte "
+                "définitif est calculé ; le service RH le vérifie avant "
+                "le règlement du solde.",
     "created_for": "Le brouillon a été créé pour votre collaborateur : il "
                    "pourra le compléter et le soumettre depuis son portail.",
     "submitted_for": "La demande a été soumise au nom de votre collaborateur.",
@@ -253,7 +263,7 @@ class PortailMission(PortailCommon):
             "frais": [{"description": f.description,
                        "montant": "%g" % f.montant,
                        "employee_id": f.membre_id.employee_id.id or ""}
-                      for f in mission.frais_ids],
+                      for f in self._frais_prevus(mission)],
         }
 
     def _form_values_from_post(self, post):
@@ -292,12 +302,18 @@ class PortailMission(PortailCommon):
         values.update(extra)
         return request.render("portail_mission.portal_my_mission_form", values)
 
+    @staticmethod
+    def _frais_prevus(mission):
+        """Lignes PRÉVUES d'une mission (le portail ne saisit que
+        celles-là ; les frais réels arrivent avec le retour)."""
+        return mission.frais_ids.filtered(lambda f: f.type_frais == "prevu")
+
     def _apply_frais(self, mission, frais):
         """Remplace les lignes de frais de la mission par celles du
         formulaire (uniquement en brouillon : verrou métier sinon). Le
         missionnaire est résolu employé -> ligne membre ; sans choix, le
         frais ira au chef de mission à la soumission."""
-        mission.frais_ids.sudo().unlink()
+        self._frais_prevus(mission).sudo().unlink()
         if frais:
             emp_to_membre = {m.employee_id.id: m.id
                              for m in mission.membre_ids}
@@ -305,6 +321,7 @@ class PortailMission(PortailCommon):
                 {"mission_id": mission.id,
                  "description": line["description"],
                  "montant": line["montant"],
+                 "type_frais": "prevu",
                  "membre_id": emp_to_membre.get(line.get("employee_id"))
                               or False}
                 for line in frais])
@@ -369,6 +386,8 @@ class PortailMission(PortailCommon):
             "error_message": error,
             "is_validator_view": as_validator,
             "is_chef": mission.employee_id in employees,
+            "can_declare_return": (mission.state == "validated"
+                                   and mission.employee_id in employees),
             "can_decide_now": can_decide_now,
             "page_name": "team_mission" if as_validator else "mission",
         }
@@ -503,6 +522,177 @@ class PortailMission(PortailCommon):
         return request.redirect("/my/missions?success=deleted")
 
     # ------------------------------------------------------------------
+    # Retour de mission (note de frais) — réservé au CHEF DE MISSION
+    # ------------------------------------------------------------------
+    def _parse_frais_reels(self, mission, error):
+        """Lignes de frais réels du formulaire de retour : montant,
+        description, missionnaire, et justificatif éventuel (fichier
+        téléversé ou pièce déjà enregistrée)."""
+        form = request.httprequest.form
+        files = request.httprequest.files
+        emp_ok = mission.membre_ids.employee_id.ids
+        lines = []
+        descriptions = form.getlist("reel_description")
+        montants = form.getlist("reel_montant")
+        membres = form.getlist("reel_membre")
+        garder = form.getlist("reel_garder")
+        justificatifs = files.getlist("reel_justificatif")
+        for idx, (desc, montant) in enumerate(zip(descriptions, montants)):
+            desc = (desc or "").strip()
+            brut = (montant or "").strip().replace(",", ".").replace(" ", "")
+            if not desc and not brut:
+                continue
+            if not desc:
+                error["frais"] = _("Ligne %s : la description est "
+                                   "obligatoire.", idx + 1)
+                continue
+            try:
+                valeur = float(brut)
+            except ValueError:
+                error["frais"] = _("Ligne %s (« %s ») : montant invalide.",
+                                   idx + 1, desc)
+                continue
+            if valeur <= 0:
+                error["frais"] = _("Ligne %s (« %s ») : le montant doit "
+                                   "être positif.", idx + 1, desc)
+                continue
+            membre = membres[idx] if idx < len(membres) else ""
+            employee_id = None
+            if membre:
+                if membre.isdigit() and int(membre) in emp_ok:
+                    employee_id = int(membre)
+                else:
+                    error["frais"] = _(
+                        "Ligne %s : le missionnaire choisi n'est pas "
+                        "membre de la mission.", idx + 1)
+                    continue
+            fichier = justificatifs[idx] if idx < len(justificatifs) else None
+            lines.append({
+                "description": desc,
+                "montant": valeur,
+                "employee_id": employee_id,
+                "file": fichier if (fichier and fichier.filename) else None,
+                "garder": (garder[idx] if idx < len(garder) else "") == "1",
+            })
+        return lines
+
+    def _apply_frais_reels(self, mission, lines):
+        """Remplace les frais réels par ceux du formulaire, en conservant
+        le justificatif déjà enregistré quand aucun nouveau fichier n'est
+        envoyé."""
+        anciens = {}
+        for ligne in mission.frais_reels_ids:
+            anciens[(ligne.description, ligne.membre_id.id)] = (
+                ligne.justificatif, ligne.justificatif_filename)
+        mission.frais_reels_ids.sudo().unlink()
+        emp_to_membre = {m.employee_id.id: m.id for m in mission.membre_ids}
+        chef = emp_to_membre.get(mission.employee_id.id)
+        for ligne in lines:
+            membre_id = emp_to_membre.get(ligne.get("employee_id")) or chef
+            vals = {
+                "mission_id": mission.id,
+                "membre_id": membre_id,
+                "type_frais": "reel",
+                "description": ligne["description"],
+                "montant": ligne["montant"],
+            }
+            if ligne.get("file"):
+                contenu = ligne["file"].read() or b""
+                validate_justificatif(ligne["file"].filename, contenu)
+                vals["justificatif"] = base64.b64encode(contenu)
+                vals["justificatif_filename"] = ligne["file"].filename
+            elif ligne.get("garder"):
+                ancien = anciens.get((ligne["description"], membre_id))
+                if ancien and ancien[0]:
+                    vals["justificatif"] = ancien[0]
+                    vals["justificatif_filename"] = ancien[1]
+            request.env["gm.mission.frais"].sudo().create(vals)
+
+    def _retour_form_values(self, mission, post=None):
+        """Valeurs du formulaire de retour : depuis la mission, ou depuis
+        la saisie en cours après une erreur."""
+        if post is None:
+            return {
+                "date_depart_reelle": mission.date_depart_reelle.strftime("%Y-%m-%d")
+                    if mission.date_depart_reelle else (
+                        mission.date_depart.strftime("%Y-%m-%d")
+                        if mission.date_depart else ""),
+                "date_retour_reelle": mission.date_retour_reelle.strftime("%Y-%m-%d")
+                    if mission.date_retour_reelle else (
+                        mission.date_retour.strftime("%Y-%m-%d")
+                        if mission.date_retour else ""),
+                "retour_commentaire": mission.retour_commentaire or "",
+                "frais": [{"description": f.description,
+                           "montant": "%g" % f.montant,
+                           "employee_id": f.membre_id.employee_id.id or "",
+                           "justificatif": f.justificatif_filename or ""}
+                          for f in (mission.frais_reels_ids
+                                    or mission.frais_prevus_ids)],
+            }
+        form = request.httprequest.form
+        membres = form.getlist("reel_membre")
+        frais = []
+        for i, (d, m) in enumerate(zip(form.getlist("reel_description"),
+                                       form.getlist("reel_montant"))):
+            if (d or "").strip() or (m or "").strip():
+                frais.append({
+                    "description": d, "montant": m,
+                    "employee_id": membres[i] if i < len(membres) else "",
+                    "justificatif": "",
+                })
+        return {
+            "date_depart_reelle": post.get("date_depart_reelle") or "",
+            "date_retour_reelle": post.get("date_retour_reelle") or "",
+            "retour_commentaire": post.get("retour_commentaire") or "",
+            "frais": frais,
+        }
+
+    @http.route(["/my/missions/<int:mission_id>/retour"],
+                type="http", auth="user", website=True,
+                methods=["GET", "POST"])
+    def portal_my_mission_retour(self, mission_id=None, **post):
+        try:
+            mission = self._get_mission_or_raise(
+                mission_id, require_states=("validated",), require_chef=True)
+        except (AccessError, MissingError):
+            return request.redirect("/my/missions")
+
+        error = {}
+        if request.httprequest.method == "POST":
+            lignes = self._parse_frais_reels(mission, error)
+            if not error:
+                vals = {
+                    "date_depart_reelle": (post.get("date_depart_reelle")
+                                           or "").strip() or False,
+                    "date_retour_reelle": (post.get("date_retour_reelle")
+                                           or "").strip() or False,
+                    "retour_commentaire": (post.get("retour_commentaire")
+                                           or "").strip() or False,
+                }
+                try:
+                    mission.sudo().write(vals)
+                    # les frais réels n'acceptent l'écriture qu'à l'état
+                    # « returned » : on déclare d'abord, on remplace ensuite
+                    mission.sudo().action_declare_return()
+                    self._apply_frais_reels(mission, lignes)
+                    return request.redirect(
+                        "/my/missions/%s?success=returned" % mission.id)
+                except (UserError, ValidationError) as exc:
+                    if mission.state == "returned":
+                        mission.sudo().action_back_to_validated()
+                    error["global"] = exc.args[0] if exc.args else str(exc)
+
+        values = {
+            "mission": mission,
+            "form_values": self._retour_form_values(
+                mission, post if request.httprequest.method == "POST" else None),
+            "error": error,
+            "page_name": "mission",
+        }
+        return request.render(
+            "portail_mission.portal_my_mission_retour", values)
+
+    # ------------------------------------------------------------------
     # Téléchargement des documents officiels (mission validée)
     # ------------------------------------------------------------------
     PM_DOCUMENTS = {
@@ -532,7 +722,8 @@ class PortailMission(PortailCommon):
             or (mission.membre_ids.employee_id & employees)
             or mission.validation_line_ids.filtered(
                 lambda l: l.validator_id in employees))
-        if not (allowed and mission.state == "validated"):
+        if not (allowed
+                and mission.state in ("validated", "returned", "closed")):
             return request.redirect("/my/missions")
 
         report_ref, label = self.PM_DOCUMENTS[doc]

@@ -86,3 +86,11 @@ et `custom_salary_reports` de l'écosystème LICELI.
   pipeline standard. API protégée par clé (paramètre système, jamais
   dans le code), limitation de débit, création automatique de l'employé
   à l'embauche (paramétrable).
+
+### Cycle de vie complet d'une mission
+
+Demande -> circuit de validation -> ordre de mission numéroté -> avance
+-> **retour déclaré** (dates réelles, note de frais justifiée, décompte
+recalculé) -> règlement du solde -> **clôture**. Annulation possible
+avec motif obligatoire, numéro conservé. Missions individuelles ou
+groupées (indemnité propre à chaque missionnaire).
