@@ -88,6 +88,17 @@ class GmMissionMembre(models.Model):
                 or self.env.context.get("gm_recompute")):
             return
         for mission in missions:
+            # États terminaux : le décompte est arrêté, plus rien ne bouge —
+            # même règle que les lignes de frais (cf. gm_frais.py). Sans ce
+            # contrôle, un gestionnaire pouvait encore modifier l'avance d'un
+            # membre sur une mission CLÔTURÉE dès lors que « Avance versée »
+            # n'était pas cochée, ce qui changeait le solde après clôture.
+            if mission.state in ("closed", "cancelled"):
+                raise UserError(_(
+                    "La mission %s est %s : ses membres et leurs montants ne "
+                    "sont plus modifiables.", mission.name,
+                    _("clôturée") if mission.state == "closed"
+                    else _("annulée")))
             if mission.avance_versee:
                 raise UserError(_(
                     "L'avance de la mission %s a déjà été versée : les "

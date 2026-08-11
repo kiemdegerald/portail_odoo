@@ -38,12 +38,19 @@
                             type="action" string="Annuler la mission"
                             invisible="state not in ('submitted', 'validated') or not is_gm_manager"/>
                     <field name="can_declare_return" invisible="1"/>
+                    <!-- Imprimables tant que la mission a un numéro officiel et
+                         a réellement eu lieu : validée, retour déclaré ou
+                         clôturée. La fiche de décompte bascule d'elle-même en
+                         « Décompte définitif » dès le retour — c'est justement
+                         à la clôture que les RH en ont besoin.
+                         Volontairement exclu : brouillon/soumise/refusée (pas de
+                         numéro) et annulée (la mission n'a pas eu lieu). -->
                     <button name="%(gestion_mission.action_report_gm_ordre_mission)d"
                             type="action" string="Imprimer l'ordre de mission"
-                            invisible="state != 'validated'"/>
+                            invisible="state not in ('validated', 'returned', 'closed')"/>
                     <button name="%(gestion_mission.action_report_gm_decompte)d"
                             type="action" string="Imprimer la fiche de décompte"
-                            invisible="state != 'validated'"/>
+                            invisible="state not in ('validated', 'returned', 'closed')"/>
                     <field name="can_decide" invisible="1"/>
                     <field name="can_reset" invisible="1"/>
                     <field name="state" widget="statusbar"
@@ -138,7 +145,7 @@
                     <notebook>
                         <page string="Membres de la mission" name="membres">
                             <field name="membre_ids"
-                                   readonly="avance_versee or (state != 'draft' and not is_gm_manager)">
+                                   readonly="avance_versee or state in ('closed', 'cancelled') or (state != 'draft' and not is_gm_manager)">
                                 <tree editable="bottom">
                                     <field name="sequence" widget="handle"/>
                                     <field name="employee_id"
