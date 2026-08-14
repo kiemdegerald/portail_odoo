@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================ Formulaire ============================ -->
+    <record id="view_ev_campagne_form" model="ir.ui.view">
+        <field name="name">ev.campagne.form</field>
+        <field name="model">ev.campagne</field>
+        <field name="arch" type="xml">
+            <form string="Campagne d'évaluation">
+                <header>
+                    <button name="action_lancer" type="object"
+                            string="Lancer la campagne" class="btn-primary"
+                            invisible="state != 'draft'"
+                            confirm="Générer les évaluations pour tous les agents ciblés ?"/>
+                    <button name="action_lancer" type="object"
+                            string="Générer les manquantes"
+                            invisible="state != 'running'"
+                            help="Relance la génération après avoir élargi le ciblage. Les agents déjà servis sont ignorés."/>
+                    <button name="action_cloturer" type="object"
+                            string="Clôturer" class="btn-primary"
+                            invisible="state != 'running'"
+                            confirm="Clôturer la campagne ?"/>
+                    <button name="action_annuler" type="object"
+                            string="Annuler la campagne"
+                            invisible="state not in ('draft', 'running')"/>
+                    <button name="action_remettre_brouillon" type="object"
+                            string="Remettre en brouillon"
+                            invisible="state != 'cancelled'"/>
+                    <button name="action_ev_export_xlsx" type="object"
+                            string="Exporter en Excel" icon="fa-file-excel-o"
+                            invisible="nb_genere == 0"
+                            help="Un classeur : une ligne par agent, une colonne par critère, plus un onglet reprenant la grille appliquée."/>
+                    <button name="action_supprimer_evaluations" type="object"
+                            string="Supprimer les évaluations générées"
+                            invisible="nb_genere == 0"
+                            confirm="Effacer définitivement les évaluations générées par cette campagne ? Leur circuit part avec elles. Les évaluations déjà engagées seront refusées."/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,running,closed"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_voir_population" type="object"
+                                class="oe_stat_button" icon="fa-users">
+                            <field name="nb_cible" widget="statinfo"
+                                   string="Agents ciblés"/>
+                        </button>
+                        <button name="action_voir_evaluations" type="object"
+                                class="oe_stat_button" icon="fa-list-ul"
+                                invisible="nb_genere == 0">
+                            <field name="nb_genere" widget="statinfo"
+                                   string="Évaluations"/>
+                        </button>
+                        <button name="action_voir_objectifs" type="object"
+                                class="oe_stat_button" icon="fa-bullseye"
+                                invisible="state == 'draft'">
+                            <field name="nb_objectifs" widget="statinfo"
+                                   string="Objectifs"/>
+                        </button>
+                    </div>
+
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1><field name="name" placeholder="Évaluation annuelle 2026"
+                                   readonly="state not in ('draft', 'running')"/></h1>
+                    </div>
+
+                    <group>
+                        <group string="Période de la campagne">
+                            <field name="exercice" readonly="state != 'draft'"/>
+                            <field name="company_id" groups="base.group_multi_company"
+                                   readonly="state != 'draft'"/>
+                            <field name="date_debut" readonly="state != 'draft'"/>
+                            <field name="date_fin"/>
+                            <separator string="Reporté sur les évaluations"
+                                       colspan="2"/>
+                            <field name="date_evaluation" readonly="state != 'draft'"/>
+                            <field name="grille_id" readonly="state != 'draft'"
+                                   options="{'no_create': True}"/>
+                            <div colspan="2" class="text-muted"
+                                 invisible="state != 'draft'">
+                                Les deux dates ci-dessus bornent l'exercice et
+                                servent au suivi. Seule la date d'entretien est
+                                recopiée sur chaque évaluation générée — chaque
+                                manager pourra ensuite l'ajuster.
+                            </div>
+                        </group>
+                        <group string="Avancement" invisible="state == 'draft'">
+                            <field name="taux_avancement" widget="progressbar"/>
+                            <field name="nb_a_confirmer"/>
+                            <field name="nb_confirme"/>
+                            <field name="nb_fait"/>
+                            <field name="nb_annule" invisible="nb_annule == 0"/>
+                            <field name="nb_sans_manager"
+                                   invisible="nb_sans_manager == 0"
+                                   class="text-danger"/>
+                            <field name="nb_agents_sans_objectif"
+                                   invisible="nb_agents_sans_objectif == 0"
+                                   class="text-danger"/>
+                        </group>
+                    </group>
+
+                    <div class="alert alert-warning" role="alert"
+                         invisible="nb_sans_manager == 0">
+                        <strong><field name="nb_sans_manager" nolabel="1" class="oe_inline"/> agent(s) sans évaluateur.</strong>
+                        Leur fiche employé ne porte aucun manager : personne ne
+                        pourra traiter leur évaluation. Renseignez le champ
+                        « Manager » sur ces fiches.
+                    </div>
+
+                    <div class="alert alert-warning" role="alert"
+                         invisible="state == 'draft' or nb_agents_sans_objectif == 0">
+                        <strong><field name="nb_agents_sans_objectif" nolabel="1" class="oe_inline"/> agent(s) sans objectif</strong>
+                        pour cet exercice. Leur évaluation portera sur des
+                        attendus qui n'ont jamais été formalisés : pensez à
+                        leur en fixer avant l'entretien.
+                    </div>
+
+                    <notebook>
+                        <page string="Ciblage" name="ciblage">
+                            <group>
+                                <field name="population" widget="radio"
+                                       readonly="state not in ('draft', 'running')"/>
+                            </group>
+                            <group invisible="population != 'department'">
+                                <field name="department_ids" widget="many2many_tags"
+                                       options="{'no_create': True}"
+                                       readonly="state not in ('draft', 'running')"/>
+                                <field name="inclure_sous_departements"
+                                       readonly="state not in ('draft', 'running')"/>
+                            </group>
+                            <group invisible="population != 'employee'">
+                                <field name="employee_ids" widget="many2many_tags"
+                                       options="{'no_create': True}"
+                                       readonly="state not in ('draft', 'running')"/>
+                            </group>
+                            <group string="Exclusions">
+                                <field name="employee_exclu_ids"
+                                       widget="many2many_tags"
+                                       options="{'no_create': True}"
+                                       readonly="state not in ('draft', 'running')"/>
+                            </group>
+                        </page>
+                        <page string="Évaluations générées" name="evaluations"
+                              invisible="nb_genere == 0">
+                            <field name="appraisal_ids" readonly="1">
+                                <tree decoration-muted="state == 'cancel'"
+                                      decoration-success="state == 'done'"
+                                      decoration-info="state == 'pending'">
+                                    <field name="employee_id"/>
+                                    <field name="department_id" optional="show"/>
+                                    <field name="manager_ids" widget="many2many_tags"/>
+                                    <field name="date_close"/>
+                                    <field name="state" widget="badge"
+                                           decoration-success="state == 'done'"
+                                           decoration-info="state == 'pending'"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- ============================== Liste ============================== -->
+    <record id="view_ev_campagne_tree" model="ir.ui.view">
+        <field name="name">ev.campagne.tree</field>
+        <field name="model">ev.campagne</field>
+        <field name="arch" type="xml">
+            <tree string="Campagnes d'évaluation"
+                  decoration-info="state == 'running'"
+                  decoration-muted="state in ('closed', 'cancelled')">
+                <field name="name"/>
+                <field name="exercice"/>
+                <field name="date_debut"/>
+                <field name="date_fin"/>
+                <field name="nb_genere" string="Évaluations"/>
+                <field name="nb_fait" string="Faites"/>
+                <field name="taux_avancement" widget="progressbar"/>
+                <field name="company_id" optional="hide"
+                       groups="base.group_multi_company"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'running'"
+                       decoration-success="state == 'closed'"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ============================ Recherche ============================ -->
+    <record id="view_ev_campagne_search" model="ir.ui.view">
+        <field name="name">ev.campagne.search</field>
+        <field name="model">ev.campagne</field>
+        <field name="arch" type="xml">
+            <search string="Campagnes">
+                <field name="name"/>
+                <field name="exercice"/>
+                <field name="department_ids"/>
+                <filter string="En cours" name="running"
+                        domain="[('state', '=', 'running')]"/>
+                <filter string="Clôturées" name="closed"
+                        domain="[('state', '=', 'closed')]"/>
+                <separator/>
+                <filter string="Évaluateur manquant" name="sans_manager"
+                        domain="[('nb_sans_manager', '&gt;', 0)]"/>
+                <group expand="0" string="Regrouper par">
+                    <filter string="Exercice" name="group_exercice"
+                            context="{'group_by': 'exercice'}"/>
+                    <filter string="Statut" name="group_state"
+                            context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ========================= Action et menu ========================= -->
+    <record id="action_ev_campagne" model="ir.actions.act_window">
+        <field name="name">Campagnes d'évaluation</field>
+        <field name="res_model">ev.campagne</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Ouvrez votre première campagne d'évaluation
+            </p>
+            <p>
+                Une campagne cible une population — une direction, une liste
+                d'agents ou toute la société — et génère en une fois les
+                évaluations correspondantes. Vous suivez ensuite leur
+                avancement jusqu'à la clôture de l'exercice.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_ev_campagne" name="Campagnes"
+              parent="hr_appraisal.menu_hr_appraisal_root"
+              action="action_ev_campagne" sequence="5"
+              groups="hr_appraisal.group_hr_appraisal_user"/>
+
+</odoo>

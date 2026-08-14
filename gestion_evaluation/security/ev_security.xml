@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Périmètre multi-société : une campagne n'est visible que depuis la
+         société qui la porte (même principe que les règles standard d'Odoo
+         sur les évaluations). -->
+    <record id="rule_ev_campagne_company" model="ir.rule">
+        <field name="name">Campagnes d'évaluation : périmètre société</field>
+        <field name="model_id" ref="model_ev_campagne"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="global" eval="True"/>
+    </record>
+
+    <!-- La notation est une pièce du dossier d'un agent. Sans règle, tout
+         utilisateur interne lisait et écrivait les notes de TOUT LE MONDE :
+         l'ACL seule ne restreint pas les lignes, seulement le modèle.
+         Un agent ordinaire ne voit donc que les notations qui le concernent :
+         la sienne, celles de ses subordonnés directs, et celles où il
+         intervient dans le circuit (N+1, N+2, personne désignée). -->
+    <record id="rule_ev_notation_ligne_user" model="ir.rule">
+        <field name="name">Notation : la sienne, son équipe, ses validations</field>
+        <field name="model_id" ref="model_ev_notation_ligne"/>
+        <field name="domain_force">['|', '|',
+            ('appraisal_id.employee_id.user_id', '=', user.id),
+            ('appraisal_id.manager_ids.user_id', '=', user.id),
+            ('appraisal_id.ev_etape_ids.validator_id.user_id', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <!-- Le service RH voit et corrige toutes les notations : c'est lui qui
+         instruit les dossiers et répond des erreurs de saisie. -->
+    <record id="rule_ev_notation_ligne_rh" model="ir.rule">
+        <field name="name">Notation : accès du service RH</field>
+        <field name="model_id" ref="model_ev_notation_ligne"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="groups"
+               eval="[(4, ref('hr_appraisal.group_hr_appraisal_user'))]"/>
+    </record>
+
+</odoo>
