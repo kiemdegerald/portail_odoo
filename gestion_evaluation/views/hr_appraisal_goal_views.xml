@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Un objectif appartient à un exercice : sans ce rattachement, les
+         objectifs d'un agent s'empilent année après année dans une liste
+         plate, et on ne sait plus lesquels une évaluation apprécie. -->
+
+    <record id="view_hr_appraisal_goal_form_ev" model="ir.ui.view">
+        <field name="name">hr.appraisal.goal.form.campagne</field>
+        <field name="model">hr.appraisal.goal</field>
+        <field name="inherit_id" ref="hr_appraisal.hr_appraisal_goal_view_form"/>
+        <field name="arch" type="xml">
+            <field name="deadline" position="after">
+                <field name="ev_campagne_id" options="{'no_create': True}"
+                       placeholder="Au titre de quel exercice ?"/>
+                <field name="ev_exercice" invisible="not ev_campagne_id"/>
+            </field>
+        </field>
+    </record>
+
+    <record id="view_hr_appraisal_goal_tree_ev" model="ir.ui.view">
+        <field name="name">hr.appraisal.goal.tree.campagne</field>
+        <field name="model">hr.appraisal.goal</field>
+        <field name="inherit_id" ref="hr_appraisal.hr_appraisal_goal_view_tree"/>
+        <field name="arch" type="xml">
+            <field name="deadline" position="after">
+                <field name="ev_exercice" string="Exercice" optional="show"/>
+                <field name="ev_campagne_id" optional="hide"/>
+            </field>
+        </field>
+    </record>
+
+    <record id="view_hr_appraisal_goal_search_ev" model="ir.ui.view">
+        <field name="name">hr.appraisal.goal.search.campagne</field>
+        <field name="model">hr.appraisal.goal</field>
+        <field name="inherit_id" ref="hr_appraisal.hr_appraisal_goal_view_search"/>
+        <field name="arch" type="xml">
+            <field name="employee_id" position="after">
+                <field name="ev_campagne_id"/>
+                <field name="ev_exercice"/>
+            </field>
+            <search position="inside">
+                <separator/>
+                <filter string="Rattachés à une campagne" name="avec_campagne"
+                        domain="[('ev_campagne_id', '!=', False)]"/>
+                <filter string="Hors campagne" name="sans_campagne"
+                        domain="[('ev_campagne_id', '=', False)]"/>
+                <group expand="0" string="Regrouper par">
+                    <filter string="Exercice" name="group_exercice"
+                            context="{'group_by': 'ev_exercice'}"/>
+                    <filter string="Campagne" name="group_campagne"
+                            context="{'group_by': 'ev_campagne_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+</odoo>
