@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ================= Configuration du circuit (RH) ================= -->
+    <record id="view_ev_circuit_phase_tree" model="ir.ui.view">
+        <field name="name">ev.circuit.phase.tree</field>
+        <field name="model">ev.circuit.phase</field>
+        <field name="arch" type="xml">
+            <tree string="Circuit d'évaluation" editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="acteur"/>
+                <field name="employee_id"
+                       required="acteur == 'fixe'"
+                       invisible="acteur != 'fixe'"
+                       options="{'no_create': True}"/>
+                <field name="saisie_notation" widget="boolean_toggle"/>
+                <field name="company_id" groups="base.group_multi_company"
+                       options="{'no_create': True}"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_ev_circuit_phase_search" model="ir.ui.view">
+        <field name="name">ev.circuit.phase.search</field>
+        <field name="model">ev.circuit.phase</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <filter string="Archivé" name="inactive"
+                        domain="[('active', '=', False)]"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_ev_circuit_phase" model="ir.actions.act_window">
+        <field name="name">Circuit d'évaluation</field>
+        <field name="res_model">ev.circuit.phase</field>
+        <field name="view_mode">tree</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Définissez les phases de l'évaluation
+            </p>
+            <p>
+                Les évaluations suivront ces phases, dans l'ordre. Chaque
+                évaluation photographie le circuit au moment où sa campagne
+                est lancée : modifier cette liste ensuite n'affecte pas les
+                exercices déjà en cours.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_ev_circuit_phase" name="Circuit d'évaluation"
+              parent="hr_appraisal.menu_hr_appraisal_configuration"
+              action="action_ev_circuit_phase" sequence="15"
+              groups="hr_appraisal.group_hr_appraisal_manager"/>
+
+    <!-- ==================== Fenêtre de décision ==================== -->
+    <record id="view_ev_decision_wizard_form" model="ir.ui.view">
+        <field name="name">ev.decision.wizard.form</field>
+        <field name="model">ev.decision.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Décision">
+                <group>
+                    <field name="appraisal_id" invisible="1"/>
+                    <field name="action" invisible="1"/>
+                    <field name="phase_nom" readonly="1"/>
+                    <field name="comment"
+                           required="action == 'renvoyer'"
+                           placeholder="Ce qui doit être corrigé, et pourquoi."/>
+                </group>
+                <footer>
+                    <button name="action_confirm" type="object"
+                            string="Confirmer" class="btn-primary"/>
+                    <button string="Annuler" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_ev_decision_valider" model="ir.actions.act_window">
+        <field name="name">Valider la phase</field>
+        <field name="res_model">ev.decision.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="context">{'default_appraisal_id': active_id, 'default_action': 'valider'}</field>
+    </record>
+
+    <record id="action_ev_decision_renvoyer" model="ir.actions.act_window">
+        <field name="name">Renvoyer pour correction</field>
+        <field name="res_model">ev.decision.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="context">{'default_appraisal_id': active_id, 'default_action': 'renvoyer'}</field>
+    </record>
+
+</odoo>

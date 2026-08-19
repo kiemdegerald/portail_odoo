@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Circuit par défaut installé avec le module : les cinq temps du TDR.
+         noupdate : les RH le modifient librement (ordre, acteurs, ajout ou
+         retrait de phases) sans qu'une mise à jour du module l'écrase. -->
+    <data noupdate="1">
+
+        <record id="phase_objectifs" model="ev.circuit.phase">
+            <field name="sequence">10</field>
+            <field name="name">Fixation des objectifs</field>
+            <field name="acteur">n1</field>
+        </record>
+
+        <record id="phase_auto_evaluation" model="ev.circuit.phase">
+            <field name="sequence">20</field>
+            <field name="name">Auto-évaluation</field>
+            <field name="acteur">agent</field>
+            <!-- L'agent ne se note pas lui-même : la fiche de la banque est
+                 remplie par la hiérarchie. Sa contribution est son
+                 commentaire et l'entretien. Case à cocher si la banque
+                 décide l'inverse. -->
+            <field name="saisie_notation" eval="False"/>
+        </record>
+
+        <record id="phase_notation" model="ev.circuit.phase">
+            <field name="sequence">30</field>
+            <field name="name">Notation</field>
+            <field name="acteur">n1</field>
+        </record>
+
+        <record id="phase_validation" model="ev.circuit.phase">
+            <field name="sequence">40</field>
+            <field name="name">Validation</field>
+            <field name="acteur">n2</field>
+        </record>
+
+        <record id="phase_entretien" model="ev.circuit.phase">
+            <field name="sequence">50</field>
+            <field name="name">Entretien</field>
+            <field name="acteur">n1</field>
+        </record>
+
+    </data>
+</odoo>
