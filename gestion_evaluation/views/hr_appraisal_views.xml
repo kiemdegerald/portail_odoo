@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Le champ « Campagne » ajouté par ce module doit être exploitable
+         depuis les écrans standard : sans cela, impossible de retrouver ni
+         de traiter en masse les évaluations d'une campagne donnée. -->
+
+    <!-- Recherche : champ cherchable + filtres + regroupement -->
+    <record id="view_hr_appraisal_search_ev" model="ir.ui.view">
+        <field name="name">hr.appraisal.search.campagne</field>
+        <field name="model">hr.appraisal</field>
+        <field name="inherit_id" ref="hr_appraisal.hr_appraisal_search"/>
+        <field name="arch" type="xml">
+            <field name="department_id" position="after">
+                <field name="ev_campagne_id"/>
+            </field>
+            <filter name="filter_done" position="after">
+                <separator/>
+                <filter string="Issues d'une campagne" name="avec_campagne"
+                        domain="[('ev_campagne_id', '!=', False)]"/>
+                <filter string="Hors campagne" name="sans_campagne"
+                        domain="[('ev_campagne_id', '=', False)]"/>
+            </filter>
+            <filter name="employee" position="after">
+                <filter string="Campagne" name="group_campagne"
+                        context="{'group_by': 'ev_campagne_id'}"/>
+            </filter>
+        </field>
+    </record>
+
+    <!-- Liste : colonne facultative, activable par le sélecteur de colonnes -->
+    <record id="view_hr_appraisal_tree_ev" model="ir.ui.view">
+        <field name="name">hr.appraisal.tree.campagne</field>
+        <field name="model">hr.appraisal</field>
+        <field name="inherit_id" ref="hr_appraisal.view_hr_appraisal_tree"/>
+        <field name="arch" type="xml">
+            <field name="date_close" position="after">
+                <field name="ev_campagne_id" optional="show"/>
+            </field>
+        </field>
+    </record>
+
+    <!-- Formulaire : campagne d'origine, boutons du circuit et onglet de
+         suivi des phases -->
+    <record id="view_hr_appraisal_form_ev" model="ir.ui.view">
+        <field name="name">hr.appraisal.form.campagne</field>
+        <field name="model">hr.appraisal</field>
+        <field name="inherit_id" ref="hr_appraisal.view_hr_appraisal_form"/>
+        <field name="arch" type="xml">
+
+            <field name="department_id" position="after">
+                <field name="ev_campagne_id" readonly="1"
+                       invisible="not ev_campagne_id"/>
+            </field>
+
+            <!-- Le bouton natif « Marquer comme fait » clôturerait
+                 l'évaluation sans passer par le circuit — donc sans la
+                 validation N+2. On le masque tant qu'il reste des phases ;
+                 le verrou serveur est dans action_done(). -->
+            <button name="action_done" position="attributes">
+                <attribute name="invisible">state != 'pending' or 'uid' not in manager_user_ids and not is_manager or ev_circuit_en_cours</attribute>
+            </button>
+
+            <!-- Boutons du circuit, visibles seulement pour l'acteur attendu -->
+            <header position="inside">
+                <field name="ev_can_agir" invisible="1"/>
+                <field name="ev_circuit_en_cours" invisible="1"/>
+                <field name="ev_phase_courante_id" invisible="1"/>
+                <button name="%(gestion_evaluation.action_ev_decision_valider)d"
+                        type="action" string="Valider ma phase"
+                        class="btn-primary" invisible="not ev_can_agir"/>
+                <button name="%(gestion_evaluation.action_ev_decision_renvoyer)d"
+                        type="action" string="Renvoyer pour correction"
+                        invisible="not ev_can_agir"/>
+                <field name="ev_grille_id" invisible="1"/>
+                <button name="action_ev_export_fiche" type="object"
+                        string="Fiche Excel" icon="fa-file-excel-o"
+                        invisible="not ev_grille_id"
+                        help="La fiche remplie, bloc par bloc, avec la note globale et la piste d'audit du circuit."/>
+            </header>
+
+            <!-- Objectifs de CETTE campagne, jamais ceux des exercices passés -->
+            <xpath expr="//div[hasclass('oe_button_box')]" position="inside">
+                <button name="action_ev_voir_objectifs" type="object"
+                        class="oe_stat_button" icon="fa-bullseye"
+                        invisible="not ev_campagne_id">
+                    <field name="ev_objectif_count" widget="statinfo"
+                           string="Objectifs de l'exercice"/>
+                </button>
+            </xpath>
+
+            <!-- Bandeau : où en est le dossier, et qui l'on attend -->
+            <sheet position="inside">
+                <div class="alert alert-info mt-2" role="alert"
+                     invisible="not ev_phase_courante_id">
+                    <strong>Phase en cours :
+                        <field name="ev_phase_courante_id" nolabel="1"
+                               class="oe_inline" readonly="1"/></strong>
+                    — en attente de
+                    <field name="ev_acteur_courant_id" nolabel="1"
+                           class="oe_inline" readonly="1"
+                           invisible="not ev_acteur_courant_id"/>
+                    <span invisible="ev_acteur_courant_id">du service RH</span>
+                </div>
+            </sheet>
+
+            <notebook position="inside">
+                <page string="Notation" name="ev_notation"
+                      invisible="not ev_grille_id">
+                    <field name="ev_notation_modifiable" invisible="1"/>
+                    <div class="alert alert-info" role="alert"
+                         invisible="ev_notation_complete or not ev_notation_modifiable">
+                        <field name="ev_nb_notes" nolabel="1" class="oe_inline"/>
+                        critère(s) notés sur
+                        <field name="ev_nb_criteres" nolabel="1" class="oe_inline"/>.
+                        La note globale ne sera définitive qu'une fois tous
+                        les critères appréciés.
+                    </div>
+                    <div class="alert alert-secondary" role="alert"
+                         invisible="ev_notation_modifiable">
+                        <i class="fa fa-lock" title="Verrouillé"/>
+                        <b> Notation en lecture seule.</b>
+                        Elle ne se saisit que pendant la phase qui y donne
+                        droit, et plus du tout une fois l'évaluation
+                        clôturée.
+                    </div>
+                    <field name="ev_note_ids"
+                           readonly="not ev_notation_modifiable">
+                        <tree editable="bottom" default_order="sequence">
+                            <field name="sequence" column_invisible="1"/>
+                            <field name="bloc_id" readonly="1"
+                                   optional="show"/>
+                            <field name="theme_id" readonly="1"
+                                   optional="show"/>
+                            <field name="critere_id" readonly="1"/>
+                            <field name="niveau_id"
+                                   options="{'no_create': True, 'no_open': True}"/>
+                            <field name="valeur" readonly="1" optional="show"/>
+                            <field name="commentaire"/>
+                        </tree>
+                    </field>
+                    <group class="oe_subtotal_footer">
+                        <field name="ev_note_globale" readonly="1"
+                               digits="[16,2]"/>
+                        <field name="ev_notation_complete" invisible="1"/>
+                    </group>
+                    <separator string="Détail de la notation"/>
+                    <field name="ev_notation_detail" nolabel="1" readonly="1"/>
+                </page>
+                <page string="Circuit d'évaluation" name="ev_circuit"
+                      invisible="not ev_etape_ids">
+                    <field name="ev_etape_ids" readonly="1">
+                        <tree decoration-success="state == 'done'"
+                              decoration-info="state == 'pending'"
+                              decoration-muted="state in ('waiting', 'skipped')">
+                            <field name="sequence" column_invisible="1"/>
+                            <field name="name"/>
+                            <field name="acteur"/>
+                            <field name="validator_id"/>
+                            <field name="state" widget="badge"
+                                   decoration-success="state == 'done'"
+                                   decoration-info="state == 'pending'"
+                                   decoration-warning="state == 'skipped'"/>
+                            <field name="skip_reason" optional="show"/>
+                            <field name="acted_by_id" optional="show"/>
+                            <field name="date_action" optional="show"/>
+                            <field name="comment"/>
+                        </tree>
+                    </field>
+                </page>
+            </notebook>
+        </field>
+    </record>
+
+    <!-- Recherche : retrouver ce que j'ai à traiter -->
+    <record id="view_hr_appraisal_search_ev_circuit" model="ir.ui.view">
+        <field name="name">hr.appraisal.search.circuit</field>
+        <field name="model">hr.appraisal</field>
+        <field name="inherit_id" ref="hr_appraisal.hr_appraisal_search"/>
+        <field name="arch" type="xml">
+            <field name="department_id" position="after">
+                <field name="ev_acteur_courant_id"/>
+            </field>
+            <filter name="filter_done" position="after">
+                <separator/>
+                <filter string="En attente de ma décision" name="ev_a_traiter"
+                        domain="[('ev_acteur_courant_id.user_id', '=', uid)]"/>
+            </filter>
+        </field>
+    </record>
+
+</odoo>
