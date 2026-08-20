@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Échelle et grille reprises de la « Grille d'appréciation annuelle
+         du Personnel » de la BADF. noupdate : les RH les adaptent sans
+         qu'une mise à jour du module écrase leur travail. -->
+    <data noupdate="1">
+
+        <!-- ============ Échelle de notation (1 à 5) ============ -->
+        <record id="niveau_1" model="ev.echelle.niveau">
+            <field name="sequence">10</field>
+            <field name="name">Point d'amélioration prioritaire</field>
+            <field name="valeur">1</field>
+        </record>
+        <record id="niveau_2" model="ev.echelle.niveau">
+            <field name="sequence">20</field>
+            <field name="name">En dessous du niveau attendu</field>
+            <field name="valeur">2</field>
+        </record>
+        <record id="niveau_3" model="ev.echelle.niveau">
+            <field name="sequence">30</field>
+            <field name="name">Atteinte du niveau attendu</field>
+            <field name="valeur">3</field>
+        </record>
+        <record id="niveau_4" model="ev.echelle.niveau">
+            <field name="sequence">40</field>
+            <field name="name">Au-dessus du niveau attendu</field>
+            <field name="valeur">4</field>
+        </record>
+        <record id="niveau_5" model="ev.echelle.niveau">
+            <field name="sequence">50</field>
+            <field name="name">Excellence</field>
+            <field name="valeur">5</field>
+        </record>
+
+        <!-- ==================== La grille ==================== -->
+        <record id="grille_badf" model="ev.grille">
+            <field name="name">Grille d'appréciation annuelle du Personnel</field>
+        </record>
+
+        <!-- = Bloc : Savoir-faire = -->
+        <record id="bloc_savoir_faire" model="ev.grille.bloc">
+            <field name="grille_id" ref="grille_badf"/>
+            <field name="sequence">10</field>
+            <field name="name">Savoir-faire</field>
+        </record>
+
+        <record id="theme_performance" model="ev.grille.theme">
+            <field name="bloc_id" ref="bloc_savoir_faire"/>
+            <field name="sequence">10</field>
+            <field name="name">Performance dans son poste</field>
+        </record>
+        <record id="critere_qualite_travail" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_performance"/>
+            <field name="sequence">10</field>
+            <field name="name">Qualité du travail fourni</field>
+        </record>
+        <record id="critere_delais" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_performance"/>
+            <field name="sequence">20</field>
+            <field name="name">Respect des délais dans l'exécution des tâches</field>
+        </record>
+
+        <!-- = Bloc : Savoir-être = -->
+        <record id="bloc_savoir_etre" model="ev.grille.bloc">
+            <field name="grille_id" ref="grille_badf"/>
+            <field name="sequence">20</field>
+            <field name="name">Savoir-être</field>
+        </record>
+
+        <record id="theme_relationnel" model="ev.grille.theme">
+            <field name="bloc_id" ref="bloc_savoir_etre"/>
+            <field name="sequence">10</field>
+            <field name="name">Qualités relationnelles</field>
+        </record>
+        <record id="critere_hierarchie" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_relationnel"/>
+            <field name="sequence">10</field>
+            <field name="name">Respect de la hiérarchie</field>
+        </record>
+        <record id="critere_equipe" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_relationnel"/>
+            <field name="sequence">20</field>
+            <field name="name">Capacité à travailler en équipe</field>
+        </record>
+        <record id="critere_collaborateurs" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_relationnel"/>
+            <field name="sequence">30</field>
+            <field name="name">Qualité des relations avec ses collaborateurs directs</field>
+        </record>
+        <record id="critere_autres_services" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_relationnel"/>
+            <field name="sequence">40</field>
+            <field name="name">Qualité relationnelle avec les autres services</field>
+        </record>
+
+        <record id="theme_engagement" model="ev.grille.theme">
+            <field name="bloc_id" ref="bloc_savoir_etre"/>
+            <field name="sequence">20</field>
+            <field name="name">Engagement et motivation au travail</field>
+        </record>
+        <record id="critere_ponctualite" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_engagement"/>
+            <field name="sequence">10</field>
+            <field name="name">Ponctualité et assiduité</field>
+        </record>
+        <record id="critere_sacrifice" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_engagement"/>
+            <field name="sequence">20</field>
+            <field name="name">Esprit de sacrifice</field>
+        </record>
+        <record id="critere_objectifs_banque" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_engagement"/>
+            <field name="sequence">30</field>
+            <field name="name">Engagement pour l'atteinte des objectifs de la Banque</field>
+        </record>
+
+        <record id="theme_autonomie" model="ev.grille.theme">
+            <field name="bloc_id" ref="bloc_savoir_etre"/>
+            <field name="sequence">30</field>
+            <field name="name">Autonomie</field>
+        </record>
+        <record id="critere_autonomie_taches" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_autonomie"/>
+            <field name="sequence">10</field>
+            <field name="name">Autonomie dans l'exécution des tâches</field>
+        </record>
+        <record id="critere_initiative" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_autonomie"/>
+            <field name="sequence">20</field>
+            <field name="name">Capacité de prise d'initiatives pour plus de performance (proactivité)</field>
+        </record>
+
+        <record id="theme_conformite" model="ev.grille.theme">
+            <field name="bloc_id" ref="bloc_savoir_etre"/>
+            <field name="sequence">40</field>
+            <field name="name">Conformité organisationnelle</field>
+        </record>
+        <record id="critere_procedures" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_conformite"/>
+            <field name="sequence">10</field>
+            <field name="name">Respect des règles et procédures opérationnelles</field>
+        </record>
+        <record id="critere_vestimentaire" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_conformite"/>
+            <field name="sequence">20</field>
+            <field name="name">Respect du code vestimentaire</field>
+        </record>
+
+        <!-- Thème facultatif : les RH le suppriment ou le complètent
+             librement, la note s'ajuste d'elle-même. -->
+        <record id="theme_autres_criteres" model="ev.grille.theme">
+            <field name="bloc_id" ref="bloc_savoir_etre"/>
+            <field name="sequence">50</field>
+            <field name="name">Autres critères</field>
+        </record>
+        <record id="critere_responsabilite" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_autres_criteres"/>
+            <field name="sequence">10</field>
+            <field name="name">Responsabilité</field>
+        </record>
+        <record id="critere_polyvalence" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_autres_criteres"/>
+            <field name="sequence">20</field>
+            <field name="name">Polyvalence</field>
+        </record>
+
+    </data>
+</odoo>

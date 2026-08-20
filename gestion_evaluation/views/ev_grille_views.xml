@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ==================== Échelle de notation ==================== -->
+    <record id="view_ev_echelle_niveau_tree" model="ir.ui.view">
+        <field name="name">ev.echelle.niveau.tree</field>
+        <field name="model">ev.echelle.niveau</field>
+        <field name="arch" type="xml">
+            <tree string="Échelle de notation" editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="valeur"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_ev_echelle_niveau" model="ir.actions.act_window">
+        <field name="name">Échelle de notation</field>
+        <field name="res_model">ev.echelle.niveau</field>
+        <field name="view_mode">tree</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Définissez les niveaux d'appréciation
+            </p>
+            <p>
+                Chaque niveau porte une note. La note retenue est recopiée sur
+                l'évaluation au moment de la saisie : modifier l'échelle
+                ensuite ne réécrit jamais une notation déjà faite.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_ev_echelle_niveau" name="Échelle de notation"
+              parent="hr_appraisal.menu_hr_appraisal_configuration"
+              action="action_ev_echelle_niveau" sequence="18"
+              groups="hr_appraisal.group_hr_appraisal_manager"/>
+
+    <!-- ========================= La grille ========================= -->
+    <record id="view_ev_grille_form" model="ir.ui.view">
+        <field name="name">ev.grille.form</field>
+        <field name="model">ev.grille</field>
+        <field name="arch" type="xml">
+            <form string="Grille d'évaluation">
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1><field name="name"
+                                   placeholder="Grille d'appréciation annuelle"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="nb_criteres"/>
+                            <field name="company_id"
+                                   groups="base.group_multi_company"/>
+                        </group>
+                        <group>
+                            <field name="active" widget="boolean_toggle"/>
+                        </group>
+                    </group>
+
+
+                    <notebook>
+                        <page string="Aperçu de la grille" name="apercu">
+                            <p class="text-muted">
+                                La grille entière, telle qu'elle sera
+                                appliquée. Les deux onglets suivants servent
+                                à la modifier.
+                            </p>
+                            <field name="apercu" nolabel="1" readonly="1"/>
+                        </page>
+
+                        <page string="Structure" name="structure">
+                            <p class="text-muted">
+                                Créez vos <b>blocs</b>. Ouvrez un bloc pour y
+                                créer ses <b>thèmes</b>, puis ouvrez un thème
+                                pour y ajouter ses <b>critères</b>. Retirez ce
+                                dont vous n'avez pas besoin : la note s'ajuste
+                                toute seule.
+                            </p>
+                            <field name="bloc_ids">
+                                <tree>
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="name"/>
+                                    <field name="nb_criteres" string="Critères"/>
+                                </tree>
+                                <form string="Bloc">
+                                    <group>
+                                        <field name="name"
+                                               placeholder="ex. Savoir-faire"/>
+                                    </group>
+                                    <separator string="Thèmes de ce bloc"/>
+                                    <p class="text-muted">
+                                        Ouvrez un thème pour saisir ses critères.
+                                    </p>
+                                    <field name="theme_ids">
+                                        <tree>
+                                            <field name="sequence" widget="handle"/>
+                                            <field name="name"/>
+                                            <field name="nb_criteres"
+                                                   string="Critères"/>
+                                        </tree>
+                                        <form string="Thème">
+                                            <group>
+                                                <field name="name"
+                                                       placeholder="ex. Qualités relationnelles"/>
+                                            </group>
+                                            <separator string="Critères notés dans ce thème"/>
+                                            <field name="critere_ids">
+                                                <tree editable="bottom">
+                                                    <field name="sequence"
+                                                           widget="handle"/>
+                                                    <field name="name"
+                                                           placeholder="ex. Respect de la hiérarchie"/>
+                                                    <field name="description"
+                                                           string="Précision"
+                                                           optional="hide"/>
+                                                </tree>
+                                            </field>
+                                        </form>
+                                    </field>
+                                </form>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_ev_grille_tree" model="ir.ui.view">
+        <field name="name">ev.grille.tree</field>
+        <field name="model">ev.grille</field>
+        <field name="arch" type="xml">
+            <tree string="Grilles d'évaluation">
+                <field name="name"/>
+                <field name="nb_criteres"/>
+                <field name="company_id" optional="hide"
+                       groups="base.group_multi_company"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- =================== Rubrique (formulaire) =================== -->
+    <record id="view_ev_grille_theme_form" model="ir.ui.view">
+        <field name="name">ev.grille.theme.form</field>
+        <field name="model">ev.grille.theme</field>
+        <field name="arch" type="xml">
+            <form string="Thème">
+                <sheet>
+                    <group>
+                        <field name="bloc_id" options="{'no_create': True}"/>
+                        <field name="name"/>
+                        <field name="sequence"/>
+                    </group>
+                    <separator string="Critères notés dans ce thème"/>
+                    <field name="critere_ids">
+                        <tree editable="bottom">
+                            <field name="sequence" widget="handle"/>
+                            <field name="name"/>
+                            <field name="description" optional="hide"/>
+                        </tree>
+                    </field>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_ev_grille" model="ir.actions.act_window">
+        <field name="name">Grilles d'évaluation</field>
+        <field name="res_model">ev.grille</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Construisez votre grille d'évaluation
+            </p>
+            <p>
+                Des blocs, des thèmes, des critères qu'on note. Tout compte
+                également. La grille se verrouille dès qu'une
+                campagne l'utilise.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_ev_grille" name="Critères d'évaluation"
+              parent="hr_appraisal.menu_hr_appraisal_configuration"
+              action="action_ev_grille" sequence="17"
+              groups="hr_appraisal.group_hr_appraisal_manager"/>
+
+    <!-- Le menu natif « Evaluation Scale » (« Grille d'évaluation » en
+         français) configure l'échelle de la Notation finale d'Odoo. On le
+         laisse intact : nos propres menus portent des noms distincts. -->
+
+</odoo>

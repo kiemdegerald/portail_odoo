@@ -94,3 +94,15 @@ Demande -> circuit de validation -> ordre de mission numéroté -> avance
 recalculé) -> règlement du solde -> **clôture**. Annulation possible
 avec motif obligatoire, numéro conservé. Missions individuelles ou
 groupées (indemnité propre à chaque missionnaire).
+
+## Module évaluation (même écosystème)
+
+- **`gestion_evaluation`** (complète le module *Évaluations* standard
+  d'Odoo) : campagnes annuelles avec ciblage d'une population et
+  génération en masse, circuit à plusieurs phases dont la validation
+  N+2, objectifs rattachés à leur exercice, et **grille de notation
+  configurable** — blocs, thèmes, critères, sans pondération : la note
+  d'un thème est la moyenne de ses critères, celle d'un bloc la moyenne
+  de ses thèmes, la note globale la moyenne des blocs, exactement comme
+  la fiche d'appréciation de la banque. Exports Excel de la fiche d'un
+  agent et du récapitulatif de campagne.
