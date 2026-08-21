@@ -15,11 +15,11 @@
             <field name="sequence">20</field>
             <field name="name">Auto-évaluation</field>
             <field name="acteur">agent</field>
-            <!-- L'agent ne se note pas lui-même : la fiche de la banque est
-                 remplie par la hiérarchie. Sa contribution est son
-                 commentaire et l'entretien. Case à cocher si la banque
-                 décide l'inverse. -->
-            <field name="saisie_notation" eval="False"/>
+            <!-- L'agent se note sur la MÊME grille que son responsable :
+                 sa colonne d'auto-évaluation, qu'il publie quand il a
+                 terminé. Elle sert de point de comparaison en entretien,
+                 jamais de note officielle. -->
+            <field name="saisie_notation" eval="True"/>
         </record>
 
         <record id="phase_notation" model="ev.circuit.phase">

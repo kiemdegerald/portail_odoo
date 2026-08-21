@@ -107,24 +107,31 @@ class EvExport(models.AbstractModel):
         ligne += 1
 
         for colonne, titre in enumerate([
-                _("Bloc / Thème / Critère"), _("Appréciation retenue"),
-                _("Note"), _("Observation")]):
+                _("Bloc / Thème / Critère"), _("Auto-évaluation"),
+                _("Appréciation du manager"), _("Note"), _("Observation")]):
             feuille.write(ligne, colonne, titre, f["entete"])
         ligne += 1
 
         notes = {n.critere_id.id: n for n in appraisal.ev_note_ids}
-        valeurs = {cid: n.valeur for cid, n in notes.items() if n.niveau_id}
+        valeurs = {cid: n.valeur_manager for cid, n in notes.items()
+                   if n.niveau_manager_id}
+        valeurs_agent = {cid: n.valeur_agent for cid, n in notes.items()
+                         if n.niveau_agent_id}
 
-        def ecrire_regroupement(libelle, score, style, retrait):
+        def ecrire_regroupement(libelle, score_agent, score, style, retrait):
             nonlocal ligne
             feuille.write(ligne, 0, "%s%s" % ("    " * retrait, libelle or ""),
                           style)
-            feuille.write(ligne, 1, "", style)
-            if score is None:
-                feuille.write(ligne, 2, "—", style)
+            if score_agent is None:
+                feuille.write(ligne, 1, "—", style)
             else:
-                feuille.write_number(ligne, 2, round(score, 2), style)
-            feuille.write(ligne, 3, "", style)
+                feuille.write_number(ligne, 1, round(score_agent, 2), style)
+            feuille.write(ligne, 2, "", style)
+            if score is None:
+                feuille.write(ligne, 3, "—", style)
+            else:
+                feuille.write_number(ligne, 3, round(score, 2), style)
+            feuille.write(ligne, 4, "", style)
             ligne += 1
 
         def ecrire_critere(critere):
@@ -132,35 +139,49 @@ class EvExport(models.AbstractModel):
             note = notes.get(critere.id)
             feuille.write(ligne, 0, "        %s" % (critere.name or ""),
                           f["critere"])
-            feuille.write(ligne, 1,
-                          note.niveau_id.name if note and note.niveau_id
-                          else "", f["critere"])
-            if note and note.niveau_id:
-                feuille.write_number(ligne, 2, note.valeur, f["nombre"])
+            if note and note.niveau_agent_id:
+                feuille.write_number(ligne, 1, note.valeur_agent, f["nombre"])
             else:
-                feuille.write(ligne, 2, _("non noté"), f["vide"])
-            feuille.write(ligne, 3, (note.commentaire if note else "") or "",
+                feuille.write(ligne, 1, _("non renseigné"), f["vide"])
+            feuille.write(ligne, 2,
+                          note.niveau_manager_id.name
+                          if note and note.niveau_manager_id else "",
+                          f["critere"])
+            if note and note.niveau_manager_id:
+                feuille.write_number(ligne, 3, note.valeur_manager,
+                                     f["nombre"])
+            else:
+                feuille.write(ligne, 3, _("non noté"), f["vide"])
+            feuille.write(ligne, 4, (note.commentaire if note else "") or "",
                           f["texte"])
             ligne += 1
 
         grille = appraisal.ev_grille_id
         if grille:
             for bloc in grille.bloc_ids:
-                ecrire_regroupement(bloc.name, bloc._score(valeurs),
-                                    f["rubrique"], 0)
+                ecrire_regroupement(bloc.name, bloc._score(valeurs_agent),
+                                    bloc._score(valeurs), f["rubrique"], 0)
                 for theme in bloc.theme_ids:
-                    ecrire_regroupement(theme.name, theme._score(valeurs),
+                    ecrire_regroupement(theme.name,
+                                        theme._score(valeurs_agent),
+                                        theme._score(valeurs),
                                         f["sous_rubrique"], 1)
                     for critere in theme.critere_ids:
                         ecrire_critere(critere)
             globale = grille._score(valeurs)
+            globale_agent = grille._score(valeurs_agent)
             feuille.write(ligne, 0, _("NOTE GLOBALE"), f["total_libelle"])
-            feuille.write(ligne, 1, "", f["total_libelle"])
-            if globale is None:
-                feuille.write(ligne, 2, "—", f["total"])
+            if globale_agent is None:
+                feuille.write(ligne, 1, "—", f["total"])
             else:
-                feuille.write_number(ligne, 2, round(globale, 2), f["total"])
-            feuille.write(ligne, 3, "", f["total_libelle"])
+                feuille.write_number(ligne, 1, round(globale_agent, 2),
+                                     f["total"])
+            feuille.write(ligne, 2, "", f["total_libelle"])
+            if globale is None:
+                feuille.write(ligne, 3, "—", f["total"])
+            else:
+                feuille.write_number(ligne, 3, round(globale, 2), f["total"])
+            feuille.write(ligne, 4, "", f["total_libelle"])
             ligne += 2
             if not appraisal.ev_notation_complete:
                 feuille.write(ligne, 0, _(
@@ -327,9 +348,9 @@ class EvExport(models.AbstractModel):
                 feuille.write(ligne, 8, "—", f["vide"])
             for index, critere in enumerate(criteres):
                 note = notes.get(critere.id)
-                if note and note.niveau_id:
-                    feuille.write_number(ligne, decalage + index, note.valeur,
-                                         f["nombre"])
+                if note and note.niveau_manager_id:
+                    feuille.write_number(ligne, decalage + index,
+                                         note.valeur_manager, f["nombre"])
                 else:
                     feuille.write(ligne, decalage + index, "", f["vide"])
             ligne += 1

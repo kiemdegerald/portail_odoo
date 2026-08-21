@@ -56,37 +56,78 @@ class HrAppraisal(models.Model):
     ev_note_ids = fields.One2many(
         "ev.notation.ligne", "appraisal_id", string="Notation", copy=False)
     ev_note_globale = fields.Float(
-        string="Note globale", compute="_compute_ev_notation", store=True,
+        string="Note du manager", compute="_compute_ev_notation", store=True,
         group_operator="avg",
-        help="Moyenne pondérée de toute la grille, sur l'échelle retenue.")
+        help="La note officielle : moyenne des blocs de la grille, telle "
+             "que le manager l'a remplie.")
+    ev_note_agent = fields.Float(
+        string="Auto-évaluation", compute="_compute_ev_notation", store=True,
+        group_operator="avg",
+        help="Même calcul, sur les notes que l'agent s'est données. Point "
+             "de comparaison, jamais la note officielle.")
+    ev_ecart_note = fields.Float(
+        string="Écart", compute="_compute_ev_notation", store=True,
+        help="Note du manager moins auto-évaluation.")
     ev_nb_criteres = fields.Integer(
         string="Critères", compute="_compute_ev_notation", store=True)
     ev_nb_notes = fields.Integer(
         string="Critères notés", compute="_compute_ev_notation", store=True)
+    ev_nb_notes_agent = fields.Integer(
+        string="Critères auto-évalués", compute="_compute_ev_notation",
+        store=True)
     ev_notation_complete = fields.Boolean(
         string="Notation complète", compute="_compute_ev_notation",
+        store=True)
+    ev_agent_complete = fields.Boolean(
+        string="Auto-évaluation complète", compute="_compute_ev_notation",
         store=True)
     ev_notation_detail = fields.Html(
         string="Détail de la notation", compute="_compute_ev_detail",
         sanitize=False)
     ev_notation_modifiable = fields.Boolean(
         string="Notation ouverte", compute="_compute_ev_notation_modifiable",
-        help="L'utilisateur courant peut-il saisir la notation maintenant ?")
+        help="L'utilisateur courant peut-il saisir la note du manager ?")
+    ev_auto_modifiable = fields.Boolean(
+        string="Auto-évaluation ouverte",
+        compute="_compute_ev_notation_modifiable",
+        help="L'utilisateur courant peut-il saisir son auto-évaluation ?")
+    ev_voir_notes_agent = fields.Boolean(
+        string="Voir l'auto-évaluation", compute="_compute_ev_visibilite",
+        help="L'auto-évaluation n'est visible des autres qu'une fois "
+             "publiée par l'agent.")
+    ev_voir_notes_manager = fields.Boolean(
+        string="Voir la note du manager", compute="_compute_ev_visibilite",
+        help="La note du manager n'est visible de l'agent qu'une fois "
+             "publiée.")
 
     # ------------------------------------------------------------------
     # Qui peut noter, et quand
     # ------------------------------------------------------------------
-    def _ev_motif_notation_fermee(self):
-        """None si la saisie est ouverte à l'utilisateur courant, sinon le
-        motif du refus, rédigé pour être lu par un agent.
+    def _ev_est_agent(self):
+        """L'utilisateur courant est-il l'agent évalué ?"""
+        self.ensure_one()
+        return bool(self.employee_id
+                    and self.employee_id.user_id == self.env.user)
 
-        Trois verrous, dans cet ordre :
+    def _ev_motif_notation_fermee(self, colonne="manager"):
+        """None si la saisie est ouverte à l'utilisateur courant sur la
+        colonne demandée, sinon le motif du refus, rédigé pour être lu.
+
+        ``colonne`` : « agent » (auto-évaluation), « manager » (la note
+        officielle) ou « mixte » (les deux à la fois — jamais autorisé).
+
+        Les verrous, dans cet ordre :
         1. une évaluation close ou annulée est figée pour tout le monde ;
-        2. le service RH peut corriger tant qu'elle est ouverte ;
-        3. les autres ne saisissent que pendant la phase qui leur revient,
-           et seulement si cette phase donne accès à la notation.
+        2. une colonne PUBLIÉE ne se retouche plus, même par son auteur ;
+        3. le service RH peut corriger tant que l'évaluation est ouverte ;
+        4. chacun ne remplit que SA colonne, pendant la phase qui lui
+           revient, et seulement si cette phase donne accès à la grille.
         """
         self.ensure_one()
+        if colonne == "mixte":
+            return _(
+                "Auto-évaluation et note du manager ne se saisissent pas "
+                "ensemble : chacun remplit sa propre colonne.")
         if self.state == "done":
             return _(
                 "L'évaluation de %s est clôturée : la notation est figée et "
@@ -97,8 +138,25 @@ class HrAppraisal(models.Model):
             return _(
                 "L'évaluation de %s est annulée : sa notation ne se modifie "
                 "plus.", self.employee_id.name or "")
-        if self.env.user.has_group("hr_appraisal.group_hr_appraisal_user"):
+
+        publiee = (self.employee_feedback_published if colonne == "agent"
+                   else self.manager_feedback_published)
+        est_rh = self.env.user.has_group(
+            "hr_appraisal.group_hr_appraisal_user")
+        if publiee and not est_rh:
+            return _(
+                "Cette partie est publiée : elle ne se modifie plus. "
+                "Demandez au service RH s'il faut corriger une erreur.")
+        if est_rh:
             return None
+        if colonne == "agent" and not self._ev_est_agent():
+            return _(
+                "L'auto-évaluation appartient à %s : vous ne pouvez pas la "
+                "remplir à sa place.", self.employee_id.name or "")
+        if colonne == "manager" and self._ev_est_agent():
+            return _(
+                "La note du manager ne se saisit pas par l'agent évalué. "
+                "Remplissez votre auto-évaluation.")
         phase = self.ev_phase_courante_id
         if not phase:
             return _(
@@ -119,75 +177,128 @@ class HrAppraisal(models.Model):
         return None
 
     @api.depends_context("uid")
-    @api.depends("state", "ev_phase_courante_id", "ev_can_agir")
+    @api.depends("state", "ev_phase_courante_id", "ev_can_agir",
+                 "employee_feedback_published", "manager_feedback_published")
     def _compute_ev_notation_modifiable(self):
         for appraisal in self:
             appraisal.ev_notation_modifiable = not \
-                appraisal._ev_motif_notation_fermee()
+                appraisal._ev_motif_notation_fermee(colonne="manager")
+            appraisal.ev_auto_modifiable = not \
+                appraisal._ev_motif_notation_fermee(colonne="agent")
+
+    @api.depends_context("uid")
+    @api.depends("employee_feedback_published", "manager_feedback_published",
+                 "employee_id")
+    def _compute_ev_visibilite(self):
+        """Qui voit quoi : chacun voit toujours SA colonne ; celle de
+        l'autre n'apparaît qu'une fois publiée. Les RH voient tout — ils
+        instruisent le dossier."""
+        est_rh = self.env.user.has_group(
+            "hr_appraisal.group_hr_appraisal_user")
+        for appraisal in self:
+            est_agent = appraisal._ev_est_agent()
+            appraisal.ev_voir_notes_agent = bool(
+                est_rh or est_agent or appraisal.employee_feedback_published)
+            appraisal.ev_voir_notes_manager = bool(
+                est_rh or not est_agent
+                or appraisal.manager_feedback_published)
 
     # La note dépend AUSSI de la structure de la grille : un critère
     # déplacé d'un thème à l'autre change les moyennes. Sans ces
     # dépendances, la note stockée resterait figée pendant que la fiche
     # imprimée, elle, recalculerait — deux vérités pour une évaluation.
-    @api.depends("ev_note_ids.valeur", "ev_note_ids.niveau_id",
+    @api.depends("ev_note_ids.valeur_manager",
+                 "ev_note_ids.niveau_manager_id",
+                 "ev_note_ids.valeur_agent", "ev_note_ids.niveau_agent_id",
                  "ev_grille_id",
                  "ev_grille_id.critere_ids.theme_id",
                  "ev_grille_id.theme_ids.bloc_id")
     def _compute_ev_notation(self):
+        """Deux notes, même calcul : celle du manager fait foi, celle de
+        l'agent sert de comparaison."""
         for appraisal in self:
             lignes = appraisal.ev_note_ids
-            notees = lignes.filtered(lambda l: l.niveau_id)
+            grille = appraisal.ev_grille_id
+            notees = lignes.filtered(lambda l: l.niveau_manager_id)
+            auto = lignes.filtered(lambda l: l.niveau_agent_id)
             appraisal.ev_nb_criteres = len(lignes)
             appraisal.ev_nb_notes = len(notees)
+            appraisal.ev_nb_notes_agent = len(auto)
             appraisal.ev_notation_complete = bool(
                 lignes and len(notees) == len(lignes))
-            notes = {l.critere_id.id: l.valeur for l in notees}
-            score = appraisal.ev_grille_id._score(notes)                 if appraisal.ev_grille_id else None
-            appraisal.ev_note_globale = score or 0.0
+            appraisal.ev_agent_complete = bool(
+                lignes and len(auto) == len(lignes))
+            note_manager = grille._score(
+                {l.critere_id.id: l.valeur_manager for l in notees}
+            ) if grille else None
+            note_agent = grille._score(
+                {l.critere_id.id: l.valeur_agent for l in auto}
+            ) if grille else None
+            appraisal.ev_note_globale = note_manager or 0.0
+            appraisal.ev_note_agent = note_agent or 0.0
+            appraisal.ev_ecart_note = (
+                (note_manager - note_agent)
+                if note_manager is not None and note_agent is not None
+                else 0.0)
 
-    @api.depends("ev_note_ids.valeur", "ev_note_ids.niveau_id",
+    @api.depends("ev_note_ids.valeur_manager",
+                 "ev_note_ids.niveau_manager_id",
+                 "ev_note_ids.valeur_agent", "ev_note_ids.niveau_agent_id",
                  "ev_grille_id")
     def _compute_ev_detail(self):
-        """Restitution à l'image de la fiche papier : les critères notés,
-        la moyenne de chaque thème, celle de chaque bloc, puis la note
-        globale. Aucun pourcentage — tout pèse pareil à son niveau."""
+        """Restitution à l'image de la fiche papier, en DEUX colonnes :
+        l'auto-évaluation de l'agent en regard de la note du manager —
+        c'est là que l'entretien se prépare. Une colonne non publiée
+        reste masquée à l'autre partie."""
         for appraisal in self:
             grille = appraisal.ev_grille_id
             if not grille:
                 appraisal.ev_notation_detail = False
                 continue
-            notes = {l.critere_id.id: l.valeur
-                     for l in appraisal.ev_note_ids if l.niveau_id}
+            voir_agent = appraisal.ev_voir_notes_agent
+            voir_manager = appraisal.ev_voir_notes_manager
+            notes_agent = {l.critere_id.id: l.valeur_agent
+                           for l in appraisal.ev_note_ids if l.niveau_agent_id}
+            notes_manager = {l.critere_id.id: l.valeur_manager
+                             for l in appraisal.ev_note_ids
+                             if l.niveau_manager_id}
 
-            def afficher(score):
+            def afficher(score, visible):
+                if not visible:
+                    return "<span class='text-muted'>non publié</span>"
                 return ("%.2f" % score) if score is not None else "—"
+
+            def ligne(libelle, retrait, sa, sm, gras=False, muet=False):
+                ouvre, ferme = ("<b>", "</b>") if gras else ("", "")
+                return (
+                    "<tr%s><td style='padding-left:%dpx'>%s%s%s</td>"
+                    "<td class='text-end'>%s%s%s</td>"
+                    "<td class='text-end'>%s%s%s</td></tr>" % (
+                        " class='text-muted'" if muet else "",
+                        retrait, ouvre, libelle or "", ferme,
+                        ouvre, afficher(sa, voir_agent), ferme,
+                        ouvre, afficher(sm, voir_manager), ferme))
 
             lignes = ["<table class='table table-sm o_main_table'>",
                       "<thead><tr><th>Élément</th>"
-                      "<th class='text-end' style='width:8em'>Note</th>"
+                      "<th class='text-end' style='width:9em'>Auto-évaluation</th>"
+                      "<th class='text-end' style='width:9em'>Manager</th>"
                       "</tr></thead><tbody>"]
             for bloc in grille.bloc_ids:
-                lignes.append(
-                    "<tr><td><b>%s</b></td>"
-                    "<td class='text-end'><b>%s</b></td></tr>" % (
-                        bloc.name or "", afficher(bloc._score(notes))))
+                lignes.append(ligne(bloc.name, 8, bloc._score(notes_agent),
+                                    bloc._score(notes_manager), gras=True))
                 for theme in bloc.theme_ids:
-                    lignes.append(
-                        "<tr><td style='padding-left:30px'><i>%s</i></td>"
-                        "<td class='text-end'>%s</td></tr>" % (
-                            theme.name or "", afficher(theme._score(notes))))
+                    lignes.append(ligne(
+                        "<i>%s</i>" % (theme.name or ""), 30,
+                        theme._score(notes_agent),
+                        theme._score(notes_manager)))
                     for critere in theme.critere_ids:
-                        valeur = notes.get(critere.id)
-                        lignes.append(
-                            "<tr class='text-muted'>"
-                            "<td style='padding-left:52px'>%s</td>"
-                            "<td class='text-end'>%s</td></tr>" % (
-                                critere.name or "",
-                                ("%g" % valeur) if valeur is not None else "—"))
-            lignes.append(
-                "<tr><td><b>NOTE GLOBALE</b></td>"
-                "<td class='text-end'><b>%s</b></td></tr>"
-                % afficher(grille._score(notes)))
+                        lignes.append(ligne(
+                            critere.name, 52,
+                            notes_agent.get(critere.id),
+                            notes_manager.get(critere.id), muet=True))
+            lignes.append(ligne("NOTE GLOBALE", 8, grille._score(notes_agent),
+                                grille._score(notes_manager), gras=True))
             lignes.append("</tbody></table>")
             appraisal.ev_notation_detail = "".join(lignes)
 
@@ -453,6 +564,45 @@ class HrAppraisal(models.Model):
                 "La phase « %(phase)s » attend l'action de %(qui)s.",
                 phase=phase.name, qui=attendu))
         return phase
+
+    # ------------------------------------------------------------------
+    # Publication : « j'ai terminé, l'autre peut voir »
+    # ------------------------------------------------------------------
+    def _ev_publier(self, colonne):
+        """Fige la colonne de l'utilisateur et la rend visible à l'autre.
+
+        Publier est un acte volontaire et irréversible : on refuse tant
+        que la grille n'est pas entièrement appréciée, pour éviter qu'une
+        évaluation parte incomplète.
+        """
+        self.ensure_one()
+        motif = self._ev_motif_notation_fermee(colonne=colonne)
+        if motif:
+            raise UserError(motif)
+        if self.ev_grille_id:
+            manquants = (self.ev_nb_criteres
+                         - (self.ev_nb_notes_agent if colonne == "agent"
+                            else self.ev_nb_notes))
+            if manquants > 0:
+                raise UserError(_(
+                    "Il reste %(nb)s critère(s) à apprécier sur %(total)s. "
+                    "Complétez la grille avant de publier.",
+                    nb=manquants, total=self.ev_nb_criteres))
+        champ = ("employee_feedback_published" if colonne == "agent"
+                 else "manager_feedback_published")
+        self.sudo().write({champ: True})
+        self.message_post(body=(
+            _("Auto-évaluation publiée par %s.", self.env.user.name)
+            if colonne == "agent"
+            else _("Notation publiée par %s.", self.env.user.name)))
+
+    def action_ev_publier_auto(self):
+        for appraisal in self:
+            appraisal._ev_publier("agent")
+
+    def action_ev_publier_notation(self):
+        for appraisal in self:
+            appraisal._ev_publier("manager")
 
     def action_ev_valider_etape(self, comment=None):
         """Valide la phase en cours et passe à la suivante. La dernière
