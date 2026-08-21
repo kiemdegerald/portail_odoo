@@ -104,46 +104,138 @@
                 </div>
             </sheet>
 
+            <!-- Les trames de texte d'Odoo (« Quelle est ma plus grande
+                 réussite ? »...) ne sont pas celles de la banque : la
+                 fiche d'appréciation EST la grille, et les commentaires
+                 se saisissent en regard, dans l'onglet Notation. On masque
+                 donc la page standard dès qu'une grille est posée. -->
+            <xpath expr="//page[@name='appraisal']" position="attributes">
+                <attribute name="invisible">ev_grille_id</attribute>
+            </xpath>
+
             <notebook position="inside">
                 <page string="Notation" name="ev_notation"
                       invisible="not ev_grille_id">
                     <field name="ev_notation_modifiable" invisible="1"/>
+                    <field name="ev_auto_modifiable" invisible="1"/>
+                    <field name="ev_voir_notes_agent" invisible="1"/>
+                    <field name="ev_voir_notes_manager" invisible="1"/>
+                    <field name="ev_agent_complete" invisible="1"/>
+                    <field name="ev_notation_complete" invisible="1"/>
+
                     <div class="alert alert-info" role="alert"
-                         invisible="ev_notation_complete or not ev_notation_modifiable">
+                         invisible="not ev_auto_modifiable">
+                        <b>Votre auto-évaluation.</b>
+                        Renseignez la colonne « Auto-évaluation », puis
+                        publiez-la : votre responsable ne la découvrira qu'à
+                        ce moment, et vous ne pourrez plus la modifier.
+                        <field name="ev_nb_notes_agent" nolabel="1"
+                               class="oe_inline"/> critère(s) sur
+                        <field name="ev_nb_criteres" nolabel="1"
+                               class="oe_inline"/> renseigné(s).
+                    </div>
+                    <div class="alert alert-info" role="alert"
+                         invisible="not ev_notation_modifiable">
+                        <b>Notation.</b>
                         <field name="ev_nb_notes" nolabel="1" class="oe_inline"/>
                         critère(s) notés sur
                         <field name="ev_nb_criteres" nolabel="1" class="oe_inline"/>.
-                        La note globale ne sera définitive qu'une fois tous
-                        les critères appréciés.
+                        La note n'est définitive qu'une fois tous les critères
+                        appréciés.
                     </div>
                     <div class="alert alert-secondary" role="alert"
-                         invisible="ev_notation_modifiable">
+                         invisible="ev_notation_modifiable or ev_auto_modifiable">
                         <i class="fa fa-lock" title="Verrouillé"/>
                         <b> Notation en lecture seule.</b>
-                        Elle ne se saisit que pendant la phase qui y donne
-                        droit, et plus du tout une fois l'évaluation
-                        clôturée.
+                        Chacun ne remplit que sa colonne, pendant la phase qui
+                        lui revient. Une fois publiée, une appréciation ne se
+                        modifie plus.
                     </div>
+
                     <field name="ev_note_ids"
-                           readonly="not ev_notation_modifiable">
-                        <tree editable="bottom" default_order="sequence">
+                           readonly="not ev_notation_modifiable and not ev_auto_modifiable">
+                        <tree editable="bottom" default_order="sequence"
+                              create="false" delete="false">
                             <field name="sequence" column_invisible="1"/>
                             <field name="bloc_id" readonly="1"
                                    optional="show"/>
                             <field name="theme_id" readonly="1"
                                    optional="show"/>
                             <field name="critere_id" readonly="1"/>
-                            <field name="niveau_id"
+                            <!-- Chacun n'écrit que dans sa colonne, et ne
+                                 voit celle de l'autre qu'une fois publiée. -->
+                            <field name="niveau_agent_id"
+                                   column_invisible="not parent.ev_voir_notes_agent"
+                                   readonly="not parent.ev_auto_modifiable"
                                    options="{'no_create': True, 'no_open': True}"/>
-                            <field name="valeur" readonly="1" optional="show"/>
-                            <field name="commentaire"/>
+                            <field name="niveau_manager_id"
+                                   column_invisible="not parent.ev_voir_notes_manager"
+                                   readonly="not parent.ev_notation_modifiable"
+                                   options="{'no_create': True, 'no_open': True}"/>
+                            <field name="valeur_manager" readonly="1"
+                                   column_invisible="not parent.ev_voir_notes_manager"
+                                   optional="hide"/>
+                            <field name="ecart" readonly="1" optional="hide"
+                                   column_invisible="not parent.ev_voir_notes_agent or not parent.ev_voir_notes_manager"/>
+                            <field name="commentaire"
+                                   readonly="not parent.ev_notation_modifiable"/>
                         </tree>
                     </field>
                     <group class="oe_subtotal_footer">
+                        <field name="ev_note_agent" readonly="1"
+                               digits="[16,2]"
+                               invisible="not ev_voir_notes_agent"/>
                         <field name="ev_note_globale" readonly="1"
-                               digits="[16,2]"/>
-                        <field name="ev_notation_complete" invisible="1"/>
+                               digits="[16,2]"
+                               invisible="not ev_voir_notes_manager"/>
+                        <field name="ev_ecart_note" readonly="1"
+                               digits="[16,2]"
+                               invisible="not ev_voir_notes_agent or not ev_voir_notes_manager"/>
                     </group>
+
+                    <!-- Le commentaire se rédige au même endroit que la
+                         note : le chiffre seul ne prépare pas l'entretien. -->
+                    <!-- Pleine largeur, l'un sous l'autre, comme sur la
+                         fiche papier : on y écrit plusieurs paragraphes. -->
+                    <separator string="Commentaires du collaborateur"
+                               invisible="not ev_voir_notes_agent"/>
+                    <field name="employee_feedback" nolabel="1"
+                           invisible="not ev_voir_notes_agent"
+                           readonly="not ev_auto_modifiable"
+                           options="{'collaborative': false}"
+                           placeholder="Votre appréciation de l'année : réussites, difficultés, attentes..."/>
+                    <separator string="Commentaires du supérieur hiérarchique"
+                               invisible="not ev_voir_notes_manager"/>
+                    <field name="manager_feedback" nolabel="1"
+                           invisible="not ev_voir_notes_manager"
+                           readonly="not ev_notation_modifiable"
+                           options="{'collaborative': false}"
+                           placeholder="Appréciation générale, points forts, axes de progrès..."/>
+
+                    <!-- Publier : acte volontaire, qui fige sa colonne et
+                         la rend visible à l'autre partie. -->
+                    <div class="mt-3">
+                        <button name="action_ev_publier_auto" type="object"
+                                class="btn-primary"
+                                string="Publier mon auto-évaluation"
+                                invisible="not ev_auto_modifiable"
+                                confirm="Publier votre auto-évaluation ? Votre responsable pourra la consulter, et vous ne pourrez plus la modifier."/>
+                        <button name="action_ev_publier_notation" type="object"
+                                class="btn-primary"
+                                string="Publier ma notation"
+                                invisible="not ev_notation_modifiable"
+                                confirm="Publier votre notation ? Le collaborateur pourra la consulter, et vous ne pourrez plus la modifier."/>
+                        <span class="text-muted ms-2"
+                              invisible="not employee_feedback_published">
+                            <i class="fa fa-check"/> Auto-évaluation publiée.
+                        </span>
+                        <span class="text-muted ms-2"
+                              invisible="not manager_feedback_published">
+                            <i class="fa fa-check"/> Notation publiée.
+                        </span>
+                        <field name="employee_feedback_published" invisible="1"/>
+                        <field name="manager_feedback_published" invisible="1"/>
+                    </div>
                     <separator string="Détail de la notation"/>
                     <field name="ev_notation_detail" nolabel="1" readonly="1"/>
                 </page>
