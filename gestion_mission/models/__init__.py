@@ -5,4 +5,5 @@ from . import gm_perdiem
 from . import gm_frais
 from . import gm_membre
 from . import gm_mission
+from . import gm_imputation
 from . import gm_validation

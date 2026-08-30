@@ -9,6 +9,11 @@
             <field name="sequence">10</field>
             <field name="name">Fixation des objectifs</field>
             <field name="acteur">n1</field>
+            <!-- Le responsable fixe ici la commande de l'exercice. Il n'y
+                 a rien à noter en début d'année : la grille reste fermée,
+                 elle s'ouvrira à la phase « Notation ». -->
+            <field name="saisie_objectifs" eval="True"/>
+            <field name="saisie_notation" eval="False"/>
         </record>
 
         <record id="phase_auto_evaluation" model="ev.circuit.phase">
@@ -32,12 +37,22 @@
             <field name="sequence">40</field>
             <field name="name">Validation</field>
             <field name="acteur">n2</field>
+            <!-- Le N+2 STATUE : il lit les deux notations et leurs
+                 commentaires, puis valide ou renvoie pour correction. Il
+                 ne renote pas à la place du N+1 — sans quoi la note
+                 cesserait d'être celle du supérieur direct. -->
+            <field name="saisie_notation" eval="False"/>
         </record>
 
         <record id="phase_entretien" model="ev.circuit.phase">
             <field name="sequence">50</field>
             <field name="name">Entretien</field>
             <field name="acteur">n1</field>
+            <!-- Retour au N+1 : la note est arrêtée, il reste à la
+                 restituer de vive voix. Il fixe la date, puis déclare
+                 l'entretien réalisé — ce qui clôt l'évaluation. -->
+            <field name="saisie_entretien" eval="True"/>
+            <field name="saisie_notation" eval="False"/>
         </record>
 
     </data>

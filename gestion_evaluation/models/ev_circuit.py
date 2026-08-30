@@ -48,6 +48,21 @@ class EvCircuitPhase(models.Model):
              "Décochez-la pour la phase de l'agent évalué si la banque ne "
              "veut pas qu'il se note lui-même : sa contribution reste alors "
              "son commentaire et l'entretien.")
+    saisie_objectifs = fields.Boolean(
+        string="Donne accès aux objectifs", default=False,
+        help="Cochée, l'acteur de cette phase fixe les objectifs de l'agent "
+             "pour l'exercice : il peut les ajouter, les corriger et les "
+             "retirer tant que la phase est en cours.\n\n"
+             "C'est le propre de la phase « Fixation des objectifs », en "
+             "début d'exercice. Les phases de fin d'exercice, elles, notent "
+             "ce qui a été fait : on n'y réécrit plus la commande.")
+    saisie_entretien = fields.Boolean(
+        string="Donne accès à l'entretien", default=False,
+        help="Cochée, l'acteur de cette phase fixe la date de l'entretien "
+             "annuel, puis déclare qu'il a eu lieu en validant la phase.\n\n"
+             "C'est le propre de la phase « Entretien », en fin de "
+             "circuit : la note est arrêtée, il reste à la restituer de "
+             "vive voix au collaborateur.")
     company_id = fields.Many2one(
         "res.company", string="Société",
         help="Vide = phase commune à toutes les sociétés.")
@@ -85,6 +100,14 @@ class EvEvaluationEtape(models.Model):
         help="Photographié au lancement de la campagne, comme le reste du "
              "circuit : modifier la configuration ensuite ne change rien "
              "aux évaluations déjà en route.")
+    saisie_objectifs = fields.Boolean(
+        string="Donne accès aux objectifs", default=False,
+        help="Photographié au lancement de la campagne, comme le reste du "
+             "circuit.")
+    saisie_entretien = fields.Boolean(
+        string="Donne accès à l'entretien", default=False,
+        help="Photographié au lancement de la campagne, comme le reste du "
+             "circuit.")
     validator_id = fields.Many2one(
         "hr.employee", string="Acteur attendu",
         help="Résolu au lancement de la campagne. Vide pour une phase "

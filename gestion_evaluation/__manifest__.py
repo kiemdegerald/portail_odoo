@@ -27,11 +27,15 @@ comportement natif (feedbacks, compétences, entretien, 360°).
     "author": "LICELI Technologies",
     "website": "https://www.liceli-technologies.com",
     "category": "Human Resources",
-    "version": "17.0.0.28.0",
+    "version": "17.0.0.53.0",
     "license": "LGPL-3",
     "depends": [
         "hr",
         "hr_appraisal",
+        # L'entretien annuel est posé comme un vrai rendez-vous
+        # (``calendar.event``) : c'est de là qu'Odoo tire la date
+        # d'entretien de l'évaluation.
+        "calendar",
     ],
     "data": [
         "security/ev_security.xml",
@@ -40,6 +44,7 @@ comportement natif (feedbacks, compétences, entretien, 360°).
         "data/ev_grille_data.xml",
         "views/ev_grille_views.xml",
         "views/ev_circuit_views.xml",
+        "views/ev_settings_views.xml",
         "views/ev_campagne_views.xml",
         "views/hr_appraisal_views.xml",
         "views/hr_appraisal_goal_views.xml",

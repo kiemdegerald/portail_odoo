@@ -51,6 +51,12 @@
                     <button name="%(gestion_mission.action_report_gm_decompte)d"
                             type="action" string="Imprimer la fiche de décompte"
                             invisible="state not in ('validated', 'returned', 'closed')"/>
+                    <!-- Pièce comptable : réservée au gestionnaire, disponible
+                         dès que les montants sont arrêtés (avance) puis au
+                         retour (solde). -->
+                    <button name="action_imputation_xlsx" type="object"
+                            string="Fiche d'imputation (Excel)"
+                            invisible="state not in ('validated', 'returned', 'closed') or not is_gm_manager"/>
                     <field name="can_decide" invisible="1"/>
                     <field name="can_reset" invisible="1"/>
                     <field name="state" widget="statusbar"

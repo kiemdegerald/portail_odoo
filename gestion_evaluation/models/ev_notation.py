@@ -92,8 +92,14 @@ class EvNotationLigne(models.Model):
     # est ICI, au niveau du modèle : masquer une colonne dans la vue
     # n'empêcherait ni l'import, ni l'appel RPC direct.
     @api.model
-    def _ev_check_saisie(self, appraisals, operation, champs=None):
-        if self.env.su or self.env.context.get("ev_notation_systeme"):
+    def _ev_check_saisie(self, appraisals, champs=None):
+        # Le contrôle ne se lève QUE sur demande explicite du système
+        # (génération des lignes au lancement d'une campagne). Il ne se
+        # lève PAS sur sudo() : le portail écrit en sudo — les modèles du
+        # circuit lui sont inaccessibles autrement — mais il ne doit pas
+        # échapper aux règles pour autant. L'identité reste celle de
+        # l'utilisateur connecté, c'est elle qui décide.
+        if self.env.context.get("ev_notation_systeme"):
             return
         champs = set(champs or [])
         for appraisal in appraisals:
@@ -107,9 +113,10 @@ class EvNotationLigne(models.Model):
                 colonne = "mixte" if colonne else "manager"
             motif = appraisal._ev_motif_notation_fermee(colonne=colonne)
             if motif:
-                raise UserError(_(
-                    "Notation impossible (%(op)s).\n\n%(motif)s",
-                    op=operation, motif=motif))
+                # Le motif se suffit à lui-même : il est rédigé pour être
+                # lu. Y accoler le nom de l'opération ORM (« création »,
+                # « modification ») n'apprenait rien à personne.
+                raise UserError(motif)
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -119,16 +126,15 @@ class EvNotationLigne(models.Model):
         self._ev_check_saisie(
             self.env["hr.appraisal"].browse([
                 v["appraisal_id"] for v in vals_list if v.get("appraisal_id")]),
-            _("création"), champs)
+            champs)
         return super().create(vals_list)
 
     def write(self, vals):
-        self._ev_check_saisie(
-            self.mapped("appraisal_id"), _("modification"), set(vals))
+        self._ev_check_saisie(self.mapped("appraisal_id"), set(vals))
         return super().write(vals)
 
     def unlink(self):
         self._ev_check_saisie(
-            self.mapped("appraisal_id"), _("suppression"),
+            self.mapped("appraisal_id"),
             set(CHAMPS_AGENT) | set(CHAMPS_MANAGER))
         return super().unlink()

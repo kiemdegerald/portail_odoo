@@ -18,10 +18,38 @@
                             <field name="gm_avance_pct" class="o_light_label"
                                    style="width: 6rem;"/>
                         </setting>
-                        <setting string="Nom du Directeur Général"
+                        <setting string="Nom du signataire"
                                  company_dependent="1"
-                                 help="Imprimé dans le bloc signature de l'ordre de mission et de la fiche de décompte (propre à chaque société). Laisser vide pour n'imprimer que « Le Directeur Général ».">
+                                 help="Imprimé dans le bloc signature de l'ordre de mission et de la fiche de décompte (propre à chaque société). Laisser vide pour n'imprimer que la fonction.">
                             <field name="gm_dg_name"/>
+                        </setting>
+                        <setting string="Fonction du signataire"
+                                 company_dependent="1">
+                            <field name="gm_dg_fonction"/>
+                        </setting>
+                    </block>
+                    <block title="Imputation comptable" name="gm_block_imputation">
+                        <setting string="Service émetteur" company_dependent="1"
+                                 help="En-tête de la fiche d'imputation, sous le nom de la banque (ex. « BADF / SCH »).">
+                            <field name="gm_imput_service"/>
+                        </setting>
+                        <setting string="Libellé du visa" company_dependent="1"
+                                 help="Mention imprimée en bas de la fiche (ex. « VISA DU SERVICE DU CAPITAL HUMAIN »).">
+                            <field name="gm_imput_visa"/>
+                        </setting>
+                        <setting string="Code agence du siège" company_dependent="1"
+                                 help="Code agence porté par la ligne de charge au débit.">
+                            <field name="gm_imput_agence_siege" style="width: 8rem;"/>
+                        </setting>
+                        <setting string="Compte de charge (perdiems)" company_dependent="1"
+                                 help="Compte débité pour les indemnités journalières, et son intitulé.">
+                            <field name="gm_imput_compte_charge" style="width: 14rem;"/>
+                            <field name="gm_imput_libelle_charge" class="o_light_label"/>
+                        </setting>
+                        <setting string="Compte des frais à justifier" company_dependent="1"
+                                 help="Compte débité pour les autres frais (carburant, péage...), et son intitulé.">
+                            <field name="gm_imput_compte_justifier" style="width: 14rem;"/>
+                            <field name="gm_imput_libelle_justifier" class="o_light_label"/>
                         </setting>
                     </block>
                     <block title="Qui peut initier une demande (portail)" name="gm_block_create">

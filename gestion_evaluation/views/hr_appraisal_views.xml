@@ -239,6 +239,28 @@
                     <separator string="Détail de la notation"/>
                     <field name="ev_notation_detail" nolabel="1" readonly="1"/>
                 </page>
+                <page string="Entretien" name="ev_entretien"
+                      invisible="not ev_etape_ids">
+                    <group>
+                        <group string="Rendez-vous">
+                            <field name="ev_entretien_debut" readonly="1"/>
+                            <field name="ev_entretien_avec" readonly="1"/>
+                        </group>
+                        <group string="Pièce déposée par le responsable">
+                            <field name="ev_compte_rendu"
+                                   filename="ev_compte_rendu_nom"
+                                   readonly="state in ('done', 'cancel')"/>
+                            <field name="ev_compte_rendu_nom" invisible="1"/>
+                        </group>
+                    </group>
+                    <div class="text-muted"
+                         invisible="ev_compte_rendu">
+                        L'entretien se tient hors du logiciel : le compte-rendu
+                        déposé par le responsable en est la seule trace. Il est
+                        exigé avant la clôture.
+                    </div>
+                </page>
+
                 <page string="Circuit d'évaluation" name="ev_circuit"
                       invisible="not ev_etape_ids">
                     <field name="ev_etape_ids" readonly="1">

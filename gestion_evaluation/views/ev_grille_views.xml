@@ -18,14 +18,18 @@
         <field name="name">Échelle de notation</field>
         <field name="res_model">ev.echelle.niveau</field>
         <field name="view_mode">tree</field>
+        <!-- Comme pour les grilles : les copies figées des campagnes
+             lancées ne sont pas des niveaux à retoucher. -->
+        <field name="domain">[('campagne_photo_id', '=', False)]</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 Définissez les niveaux d'appréciation
             </p>
             <p>
-                Chaque niveau porte une note. La note retenue est recopiée sur
-                l'évaluation au moment de la saisie : modifier l'échelle
-                ensuite ne réécrit jamais une notation déjà faite.
+                Chaque niveau porte une note. Au lancement d'une campagne,
+                celle-ci emporte une copie figée de l'échelle : vous pouvez
+                continuer à modifier les libellés et les notes ici, seules
+                les campagnes suivantes en profiteront.
             </p>
         </field>
     </record>
@@ -169,22 +173,32 @@
         <field name="name">Grilles d'évaluation</field>
         <field name="res_model">ev.grille</field>
         <field name="view_mode">tree,form</field>
+        <!-- Les grilles FIGÉES des campagnes lancées n'ont pas leur place
+             ici : ce sont des archives, pas des modèles à retoucher. Le
+             filtre « Grilles figées » les fait apparaître au besoin. -->
+        <field name="domain">[('campagne_photo_id', '=', False)]</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 Construisez votre grille d'évaluation
             </p>
             <p>
                 Des blocs, des thèmes, des critères qu'on note. Tout compte
-                également. La grille se verrouille dès qu'une
-                campagne l'utilise.
+                également. Au lancement d'une campagne, celle-ci emporte une
+                copie figée de la grille : vous pouvez continuer à la
+                modifier ici, seules les campagnes suivantes en profiteront.
             </p>
         </field>
     </record>
+
 
     <menuitem id="menu_ev_grille" name="Critères d'évaluation"
               parent="hr_appraisal.menu_hr_appraisal_configuration"
               action="action_ev_grille" sequence="17"
               groups="hr_appraisal.group_hr_appraisal_manager"/>
+
+    <!-- Pas de menu pour les grilles figées : on ne part jamais d'une
+         liste de copies, on part de la CAMPAGNE dont on veut savoir sur
+         quoi elle a noté. L'accès se fait donc depuis sa fiche. -->
 
     <!-- Le menu natif « Evaluation Scale » (« Grille d'évaluation » en
          français) configure l'échelle de la Notation finale d'Odoo. On le

@@ -37,7 +37,7 @@ class HrAppraisalGoal(models.Model):
         if self.ev_campagne_id or not self.employee_id:
             return
         campagnes = self.env["ev.campagne"].search([
-            ("state", "=", "running"),
+            ("state", "in", ("objectifs", "running")),
             ("appraisal_ids.employee_id", "=", self.employee_id._origin.id),
         ])
         if len(campagnes) == 1:

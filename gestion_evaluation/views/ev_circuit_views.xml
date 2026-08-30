@@ -14,6 +14,8 @@
                        required="acteur == 'fixe'"
                        invisible="acteur != 'fixe'"
                        options="{'no_create': True}"/>
+                <field name="saisie_objectifs" widget="boolean_toggle"/>
+                <field name="saisie_entretien" widget="boolean_toggle"/>
                 <field name="saisie_notation" widget="boolean_toggle"/>
                 <field name="company_id" groups="base.group_multi_company"
                        options="{'no_create': True}"/>

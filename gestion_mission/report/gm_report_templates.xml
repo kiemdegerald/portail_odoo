@@ -54,11 +54,12 @@
             <p><t t-out="doc.company_id.city or 'Ouagadougou'"/>,
                le ______________________</p>
             <div style="height: 70px;"/>
-            <t t-if="doc.company_id.gm_dg_name">
-                <p class="fw-bold mb-0"><t t-out="doc.company_id.gm_dg_name"/></p>
-                <p class="fw-bold mb-0">Directeur Général</p>
-            </t>
-            <p t-else="" class="fw-bold mb-0">Le Directeur Général</p>
+            <t t-set="signataire" t-value="doc.company_id.gm_dg_name"/>
+            <t t-set="fonction" t-value="doc.company_id.gm_dg_fonction"/>
+            <!-- Rien de configuré, rien d'imprimé : la place de la
+                 signature reste, mais on n'invente pas un titre. -->
+            <p t-if="signataire" class="fw-bold mb-0"><t t-out="signataire"/></p>
+            <p t-if="fonction" class="fw-bold mb-0"><t t-out="fonction"/></p>
         </div>
     </template>
 

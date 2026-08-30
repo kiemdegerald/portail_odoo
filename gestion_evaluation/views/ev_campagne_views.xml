@@ -9,20 +9,29 @@
             <form string="Campagne d'évaluation">
                 <header>
                     <button name="action_lancer" type="object"
-                            string="Lancer la campagne" class="btn-primary"
+                            string="Ouvrir la fixation des objectifs"
+                            class="btn-primary"
                             invisible="state != 'draft'"
-                            confirm="Générer les évaluations pour tous les agents ciblés ?"/>
+                            confirm="Générer les évaluations et ouvrir la fixation des objectifs aux responsables ?"/>
                     <button name="action_lancer" type="object"
                             string="Générer les manquantes"
-                            invisible="state != 'running'"
+                            invisible="state not in ('objectifs', 'running')"
                             help="Relance la génération après avoir élargi le ciblage. Les agents déjà servis sont ignorés."/>
+                    <button name="action_ouvrir_evaluation" type="object"
+                            string="Ouvrir l'évaluation" class="btn-primary"
+                            invisible="state != 'objectifs'"
+                            confirm="Fermer la fixation des objectifs et lancer l'évaluation ? Les agents sans objectif seront signalés, mais l'évaluation s'ouvrira quand même."/>
+                    <button name="action_rouvrir_objectifs" type="object"
+                            string="Rouvrir la fixation des objectifs"
+                            invisible="state != 'running'"
+                            help="Pour un responsable en retard, ou un agent arrivé en cours d'année."/>
                     <button name="action_cloturer" type="object"
                             string="Clôturer" class="btn-primary"
                             invisible="state != 'running'"
                             confirm="Clôturer la campagne ?"/>
                     <button name="action_annuler" type="object"
                             string="Annuler la campagne"
-                            invisible="state not in ('draft', 'running')"/>
+                            invisible="state not in ('draft', 'objectifs', 'running')"/>
                     <button name="action_remettre_brouillon" type="object"
                             string="Remettre en brouillon"
                             invisible="state != 'cancelled'"/>
@@ -35,7 +44,7 @@
                             invisible="nb_genere == 0"
                             confirm="Effacer définitivement les évaluations générées par cette campagne ? Leur circuit part avec elles. Les évaluations déjà engagées seront refusées."/>
                     <field name="state" widget="statusbar"
-                           statusbar_visible="draft,running,closed"/>
+                           statusbar_visible="draft,objectifs,running,closed"/>
                 </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
@@ -56,6 +65,17 @@
                             <field name="nb_objectifs" widget="statinfo"
                                    string="Objectifs"/>
                         </button>
+                        <!-- La grille SUR LAQUELLE cette campagne a
+                             réellement noté : on la consulte depuis la
+                             campagne, jamais depuis une liste de copies. -->
+                        <button name="action_voir_grille_figee" type="object"
+                                class="oe_stat_button" icon="fa-lock"
+                                invisible="not grille_photo_id">
+                            <div class="o_stat_info">
+                                <span class="o_stat_text">Grille</span>
+                                <span class="o_stat_text">de la campagne</span>
+                            </div>
+                        </button>
                     </div>
 
                     <div class="oe_title">
@@ -65,10 +85,29 @@
                     </div>
 
                     <group>
-                        <group string="Période de la campagne">
+                        <!-- Les dates suivent l'ordre dans lequel les choses
+                             se passent : les objectifs en début d'exercice,
+                             l'évaluation en fin d'année. -->
+                        <group string="Calendrier de l'exercice">
                             <field name="exercice" readonly="state != 'draft'"/>
                             <field name="company_id" groups="base.group_multi_company"
                                    readonly="state != 'draft'"/>
+                            <separator string="1. Fixation des objectifs (début d'exercice)"
+                                       colspan="2"/>
+                            <field name="date_objectifs_debut"
+                                   readonly="state in ('closed', 'cancelled')"/>
+                            <field name="date_objectifs_fin"
+                                   readonly="state in ('closed', 'cancelled')"/>
+                            <field name="objectifs_ouverts" invisible="1"/>
+                            <div colspan="2" class="text-muted">
+                                Période pendant laquelle les responsables
+                                fixent les objectifs de leurs collaborateurs,
+                                depuis leur portail. Elle doit se terminer
+                                avant l'ouverture de l'évaluation. En dehors,
+                                ils ne peuvent plus y toucher.
+                            </div>
+                            <separator string="2. Évaluation (fin d'exercice)"
+                                       colspan="2"/>
                             <field name="date_debut" readonly="state != 'draft'"/>
                             <field name="date_fin"/>
                             <separator string="Reporté sur les évaluations"
@@ -76,12 +115,23 @@
                             <field name="date_evaluation" readonly="state != 'draft'"/>
                             <field name="grille_id" readonly="state != 'draft'"
                                    options="{'no_create': True}"/>
+                            <field name="grille_photo_id" invisible="1"/>
+                            <div colspan="2" class="text-muted"
+                                 invisible="not grille_photo_id">
+                                Cette campagne a emporté sa propre copie de la
+                                grille au lancement : elle note dessus, et
+                                dessus seulement. Vous pouvez modifier la
+                                grille de référence ci-dessus — seules les
+                                campagnes suivantes en profiteront.
+                            </div>
                             <div colspan="2" class="text-muted"
                                  invisible="state != 'draft'">
-                                Les deux dates ci-dessus bornent l'exercice et
-                                servent au suivi. Seule la date d'entretien est
-                                recopiée sur chaque évaluation générée — chaque
-                                manager pourra ensuite l'ajuster.
+                                Les deux dates ci-dessus encadrent le temps de
+                                l'ÉVALUATION, en fin d'exercice. La fixation des
+                                objectifs, elle, a lieu bien plus tôt : sa période
+                                se règle juste en dessous. Seule la date
+                                d'entretien est recopiée sur chaque évaluation —
+                                chaque manager pourra ensuite l'ajuster.
                             </div>
                         </group>
                         <group string="Avancement" invisible="state == 'draft'">
@@ -200,7 +250,9 @@
                 <field name="name"/>
                 <field name="exercice"/>
                 <field name="department_ids"/>
-                <filter string="En cours" name="running"
+                <filter string="Fixation des objectifs" name="objectifs"
+                        domain="[('state', '=', 'objectifs')]"/>
+                <filter string="Évaluation en cours" name="running"
                         domain="[('state', '=', 'running')]"/>
                 <filter string="Clôturées" name="closed"
                         domain="[('state', '=', 'closed')]"/>

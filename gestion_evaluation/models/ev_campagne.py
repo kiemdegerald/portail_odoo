@@ -35,14 +35,19 @@ class EvCampagne(models.Model):
         "res.company", string="Société", required=True,
         default=lambda self: self.env.company)
 
-    # --- Période de la campagne : documentaire, elle borne l'exercice ---
+    # --- Le temps de l'ÉVALUATION -----------------------------------
+    # Les objectifs, eux, ont leur propre période, bien plus tôt dans
+    # l'exercice (voir `date_objectifs_debut` / `date_objectifs_fin`).
     date_debut = fields.Date(
-        string="Ouverture de la campagne", required=True, tracking=True,
+        string="Ouverture de l'évaluation", required=True, tracking=True,
         default=lambda self: fields.Date.context_today(self),
-        help="Date à laquelle l'exercice est ouvert auprès des agents. "
-             "Sert de repère : elle n'est pas reportée sur les évaluations.")
+        help="Jour où l'évaluation s'ouvre : à partir de là, chacun "
+             "remplit sa grille. Les objectifs, eux, ont été fixés en "
+             "début d'exercice — leur période se termine avant cette "
+             "date. Repère de planification : rien n'en est reporté sur "
+             "les évaluations.")
     date_fin = fields.Date(
-        string="Échéance de la campagne", required=True, tracking=True,
+        string="Échéance de l'évaluation", required=True, tracking=True,
         help="Date à laquelle toutes les évaluations devraient être "
              "terminées. Sert de repère pour le suivi des retards : elle "
              "n'est pas reportée sur les évaluations.")
@@ -56,11 +61,26 @@ class EvCampagne(models.Model):
 
     grille_id = fields.Many2one(
         "ev.grille", string="Grille d'évaluation", tracking=True,
+        domain="[('campagne_photo_id', '=', False)]",
         default=lambda self: self.env["ev.grille"].search(
-            [("company_id", "in", [False, self.env.company.id])], limit=1),
-        help="Grille utilisée pour noter les agents de cette campagne. "
-             "Elle se verrouille au lancement : deux agents évalués à trois "
-             "semaines d'écart doivent rester comparables.")
+            [("company_id", "in", [False, self.env.company.id]),
+             ("campagne_photo_id", "=", False)], limit=1),
+        help="Grille de référence choisie pour cette campagne. Au "
+             "lancement, la campagne en emporte une COPIE FIGÉE : deux "
+             "agents évalués à trois semaines d'écart doivent rester "
+             "comparables, et retoucher la grille ensuite ne doit affecter "
+             "que les campagnes suivantes.")
+    grille_photo_id = fields.Many2one(
+        "ev.grille", string="Grille figée de la campagne",
+        readonly=True, copy=False,
+        help="Copie de la grille prise au lancement. C'est elle que "
+             "portent les évaluations : elle ne bouge plus.")
+    echelle_photo_ids = fields.One2many(
+        "ev.echelle.niveau", "campagne_photo_id",
+        string="Échelle figée de la campagne", readonly=True,
+        help="Copie de l'échelle de notation prise au lancement : les "
+             "libellés lus sur les évaluations de cette campagne ne "
+             "changeront plus.")
 
     # ------------------------------------------------------------------
     # Ciblage de la population
@@ -90,13 +110,82 @@ class EvCampagne(models.Model):
     appraisal_ids = fields.One2many(
         "hr.appraisal", "ev_campagne_id", string="Évaluations",
         readonly=True)
+    # Une campagne couvre un EXERCICE, et l'exercice a deux temps très
+    # éloignés l'un de l'autre :
+    #   * en janvier, chaque responsable fixe les objectifs de ses agents ;
+    #   * en fin d'année, on évalue ce qui a été fait.
+    # Les confondre revenait à inventer les objectifs le jour où on note.
+    # Chaque temps s'ouvre par une décision du service RH.
     state = fields.Selection([
         ("draft", "Brouillon"),
-        ("running", "En cours"),
+        ("objectifs", "Fixation des objectifs"),
+        ("running", "Évaluation en cours"),
         ("closed", "Clôturée"),
         ("cancelled", "Annulée"),
     ], string="Statut", default="draft", required=True, copy=False,
         tracking=True)
+
+    # --- La fenêtre de fixation des objectifs ---------------------------
+    date_objectifs_debut = fields.Date(
+        string="Ouverture des objectifs", tracking=True,
+        help="Premier jour où les responsables peuvent fixer les objectifs "
+             "de leurs collaborateurs.")
+    date_objectifs_fin = fields.Date(
+        string="Clôture des objectifs", tracking=True,
+        help="Dernier jour de la période. Passée cette date, les objectifs "
+             "ne se modifient plus — sauf si le service RH rouvre la "
+             "période.")
+    objectifs_ouverts = fields.Boolean(
+        string="Objectifs ouverts", compute="_compute_objectifs_ouverts",
+        help="Vrai si la période de fixation des objectifs est en cours.")
+
+    @api.depends("state", "date_objectifs_debut", "date_objectifs_fin")
+    def _compute_objectifs_ouverts(self):
+        aujourdhui = fields.Date.context_today(self)
+        for campagne in self:
+            campagne.objectifs_ouverts = bool(
+                campagne.state == "objectifs"
+                and (not campagne.date_objectifs_debut
+                     or campagne.date_objectifs_debut <= aujourdhui)
+                and (not campagne.date_objectifs_fin
+                     or aujourdhui <= campagne.date_objectifs_fin))
+
+    def _ev_motif_objectifs_fermes(self):
+        """None si la période est ouverte, sinon le motif du refus.
+
+        La fenêtre est COLLECTIVE : c'est le service RH qui l'ouvre et la
+        ferme, pour toute la campagne. Elle ne dépend pas de l'avancement
+        de tel ou tel dossier.
+        """
+        self.ensure_one()
+        if self.state == "draft":
+            return _(
+                "La campagne « %s » n'est pas encore ouverte : le service "
+                "RH doit d'abord ouvrir la fixation des objectifs.",
+                self.name or "")
+        if self.state in ("closed", "cancelled"):
+            return _("La campagne « %s » est terminée.", self.name or "")
+        if self.state == "running":
+            return _(
+                "La période de fixation des objectifs est close depuis le "
+                "%(fin)s : la campagne « %(camp)s » est passée à "
+                "l'évaluation. Demandez au service RH de rouvrir la période "
+                "s'il faut encore ajouter un objectif.",
+                fin=(self.date_objectifs_fin.strftime("%d/%m/%Y")
+                     if self.date_objectifs_fin else _("sa clôture")),
+                camp=self.name or "")
+        aujourdhui = fields.Date.context_today(self)
+        if self.date_objectifs_debut and aujourdhui < self.date_objectifs_debut:
+            return _(
+                "La fixation des objectifs ouvre le %s.",
+                self.date_objectifs_debut.strftime("%d/%m/%Y"))
+        if self.date_objectifs_fin and aujourdhui > self.date_objectifs_fin:
+            return _(
+                "La période de fixation des objectifs s'est achevée le %s. "
+                "Demandez au service RH de la rouvrir s'il faut encore "
+                "ajouter un objectif.",
+                self.date_objectifs_fin.strftime("%d/%m/%Y"))
+        return None
 
     nb_cible = fields.Integer(
         string="Agents ciblés", compute="_compute_nb_cible",
@@ -187,25 +276,57 @@ class EvCampagne(models.Model):
         for campagne in self:
             if campagne.date_fin < campagne.date_debut:
                 raise ValidationError(_(
-                    "L'échéance de la campagne (%(fin)s) ne peut pas "
+                    "L'échéance de l'évaluation (%(fin)s) ne peut pas "
                     "précéder son ouverture (%(debut)s).",
                     fin=campagne.date_fin.strftime("%d/%m/%Y"),
                     debut=campagne.date_debut.strftime("%d/%m/%Y")))
             if campagne.date_evaluation < campagne.date_debut:
                 raise ValidationError(_(
                     "La date d'entretien prévue (%(eval)s) précède "
-                    "l'ouverture de la campagne (%(debut)s) : les entretiens "
-                    "ne peuvent pas commencer avant que l'exercice soit "
-                    "ouvert.",
+                    "l'ouverture de l'évaluation (%(debut)s) : les entretiens "
+                    "ne peuvent pas se tenir avant que l'évaluation soit "
+                    "ouverte.",
                     eval=campagne.date_evaluation.strftime("%d/%m/%Y"),
                     debut=campagne.date_debut.strftime("%d/%m/%Y")))
             if campagne.date_evaluation > campagne.date_fin:
                 raise ValidationError(_(
                     "La date d'entretien prévue (%(eval)s) dépasse "
-                    "l'échéance de la campagne (%(fin)s) : les entretiens "
+                    "l'échéance de l'évaluation (%(fin)s) : les entretiens "
                     "seraient programmés après la clôture de l'exercice.",
                     eval=campagne.date_evaluation.strftime("%d/%m/%Y"),
                     fin=campagne.date_fin.strftime("%d/%m/%Y")))
+
+    @api.constrains("date_objectifs_debut", "date_objectifs_fin",
+                    "date_debut")
+    def _check_dates_objectifs(self):
+        """Les objectifs se ferment AVANT que l'évaluation s'ouvre.
+
+        Les objectifs sont la commande passée à l'agent pour l'exercice :
+        on les fixe en début d'année, et on juge ensuite ce qui a été
+        fait. Une période qui déborderait sur l'évaluation reviendrait à
+        écrire la commande pendant qu'on note le travail.
+        """
+        for campagne in self:
+            debut = campagne.date_objectifs_debut
+            fin = campagne.date_objectifs_fin
+            if debut and fin and fin < debut:
+                raise ValidationError(_(
+                    "La clôture des objectifs (%(fin)s) ne peut pas "
+                    "précéder leur ouverture (%(debut)s).",
+                    fin=fin.strftime("%d/%m/%Y"),
+                    debut=debut.strftime("%d/%m/%Y")))
+            borne = fin or debut
+            if borne and campagne.date_debut and borne > campagne.date_debut:
+                raise ValidationError(_(
+                    "La fixation des objectifs se terminerait le %(obj)s, "
+                    "APRÈS l'ouverture de l'évaluation (%(ouv)s).\n\n"
+                    "Les objectifs sont la commande passée à l'agent pour "
+                    "l'exercice : ils se fixent en début d'année, et on "
+                    "évalue ensuite ce qui a été fait. Avancez la clôture "
+                    "des objectifs, ou reportez l'ouverture de "
+                    "l'évaluation.",
+                    obj=borne.strftime("%d/%m/%Y"),
+                    ouv=campagne.date_debut.strftime("%d/%m/%Y")))
 
     # ------------------------------------------------------------------
     # Ciblage
@@ -249,10 +370,11 @@ class EvCampagne(models.Model):
         élargi le ciblage.
         """
         for campagne in self:
-            if campagne.state not in ("draft", "running"):
+            if campagne.state not in ("draft", "objectifs", "running"):
                 raise UserError(_(
-                    "Seule une campagne en brouillon ou en cours peut "
-                    "générer des évaluations."))
+                    "Seule une campagne en brouillon, en fixation des "
+                    "objectifs ou en cours d'évaluation peut générer des "
+                    "évaluations."))
             employees = campagne._get_employees_cibles()
             if not employees:
                 # Le ciblage est TOUJOURS borné à la société de la campagne.
@@ -280,8 +402,122 @@ class EvCampagne(models.Model):
                     "Tous les agents ciblés ont déjà leur évaluation dans "
                     "cette campagne (%s au total).", len(deja_traites)))
 
+            campagne._ev_photographier_grille()
+            campagne._ev_photographier_echelle()
             campagne._creer_evaluations(a_creer)
+            # On n'ouvre l'évaluation que plus tard, sur décision du
+            # service RH : la campagne commence par la fixation des
+            # objectifs, en début d'exercice.
+            if campagne.state == "draft":
+                campagne.state = "objectifs"
+
+    def action_ouvrir_evaluation(self):
+        """Ferme la fixation des objectifs et lance l'évaluation.
+
+        C'est le second feu vert du service RH, en fin d'exercice. Sans
+        lui, le circuit enchaînerait tout seul : dès qu'un responsable
+        aurait fini de fixer les objectifs de quelqu'un, l'évaluation de
+        cette personne démarrerait — en janvier.
+        """
+        for campagne in self:
+            if campagne.state != "objectifs":
+                raise UserError(_(
+                    "Seule une campagne en fixation des objectifs peut "
+                    "passer à l'évaluation."))
+            sans = campagne._agents_sans_objectif()
+            for appraisal in campagne.appraisal_ids:
+                appraisal._ev_demarrer_evaluation()
             campagne.state = "running"
+            if sans:
+                # Décision de la banque : on ne bloque pas, on signale.
+                # Bloquer punirait l'agent, pas le responsable en retard.
+                campagne.message_post(body=_(
+                    "Évaluation ouverte. ATTENTION : %(nb)s agent(s) "
+                    "abordent l'exercice SANS AUCUN OBJECTIF fixé "
+                    "(%(qui)s). Ils seront évalués sans commande écrite.",
+                    nb=len(sans), qui=", ".join(sans.mapped("name")[:10])))
+            else:
+                campagne.message_post(body=_(
+                    "Évaluation ouverte. Tous les agents ont des objectifs."))
+
+    def action_rouvrir_objectifs(self):
+        """Rouvre la fixation des objectifs sur une campagne en cours.
+
+        Prévu et assumé : un responsable en retard, un agent recruté en
+        cours d'année. Le service RH rouvre la période, éventuellement
+        pour quelques jours.
+        """
+        for campagne in self:
+            if campagne.state != "running":
+                raise UserError(_(
+                    "Seule une campagne à l'évaluation peut revenir à la "
+                    "fixation des objectifs."))
+            campagne.state = "objectifs"
+            campagne.message_post(body=_(
+                "Fixation des objectifs ROUVERTE par %s.", self.env.user.name))
+
+    def _agents_sans_objectif(self):
+        """Les agents de la campagne qui n'ont aucun objectif."""
+        self.ensure_one()
+        servis = self.objectif_ids.employee_id
+        return self.appraisal_ids.filtered(
+            lambda a: a.state != "cancel").employee_id - servis
+
+    def action_voir_grille_figee(self):
+        """La grille sur laquelle cette campagne a réellement noté.
+
+        On y accède depuis la campagne, jamais depuis une liste de
+        copies : ce qu'on cherche à savoir, c'est « sur quoi cet agent
+        a-t-il été noté cette année-là », et la question part toujours de
+        la campagne.
+        """
+        self.ensure_one()
+        if not self.grille_photo_id:
+            raise UserError(_(
+                "La campagne « %s » n'a pas encore été lancée : elle "
+                "n'a donc pas encore figé sa grille.", self.name or ""))
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Grille figée — %s", self.name),
+            "res_model": "ev.grille",
+            "res_id": self.grille_photo_id.id,
+            "view_mode": "form",
+            "target": "current",
+        }
+
+    def _ev_photographier_grille(self):
+        """La campagne emporte sa propre copie de la grille, figée.
+
+        Sans cela, retoucher la grille de référence modifiait les
+        évaluations DÉJÀ EN COURS : un critère déplacé d'un thème à
+        l'autre changeait les moyennes sous les yeux des évaluateurs.
+
+        La photo se prend une seule fois, au premier lancement. Relancer
+        la campagne pour y ajouter des agents réutilise la MÊME photo :
+        tous les agents d'une campagne sont notés sur la même grille,
+        c'est la condition pour que leurs notes se comparent.
+        """
+        self.ensure_one()
+        if self.grille_photo_id or not self.grille_id:
+            return self.grille_photo_id
+        photo, _corr = self.grille_id._ev_photographier(self)
+        self.sudo().grille_photo_id = photo
+        return photo
+
+    def _ev_photographier_echelle(self):
+        """La campagne emporte aussi sa copie de l'échelle de notation.
+
+        La VALEUR d'un niveau était déjà recopiée sur la note à la saisie
+        — modifier l'échelle ne réécrivait donc aucune note. Mais le
+        LIBELLÉ était lu vif : renommer « Excellence » changeait le mot
+        lu sur les évaluations passées. Une campagne lancée garde donc
+        les libellés qu'elle a photographiés.
+        """
+        self.ensure_one()
+        if self.echelle_photo_ids:
+            return self.echelle_photo_ids
+        copies, _corr = self.env["ev.echelle.niveau"]._ev_photographier(self)
+        return copies
 
     def _check_date_entretien_au_lancement(self):
         """Au LANCEMENT seulement : on ne programme pas des entretiens dans
@@ -305,7 +541,7 @@ class EvCampagne(models.Model):
             ("id", "!=", self.id),
             ("exercice", "=", self.exercice),
             ("company_id", "=", self.company_id.id),
-            ("state", "in", ("running", "closed")),
+            ("state", "in", ("objectifs", "running", "closed")),
         ])
         if not autres:
             return
@@ -354,8 +590,10 @@ class EvCampagne(models.Model):
 
         # Notation : la grille est posée maintenant, avec une ligne par
         # critère. Elle se verrouille du fait même de ce lancement.
-        if self.grille_id:
-            evaluations._ev_creer_notation(self.grille_id)
+        # On note sur la PHOTO, jamais sur la grille de référence.
+        grille = self.grille_photo_id or self.grille_id
+        if grille:
+            evaluations._ev_creer_notation(grille)
 
         sans_manager = evaluations.filtered(lambda a: not a.manager_ids)
         message = _(

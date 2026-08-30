@@ -17,6 +17,24 @@ class ResConfigSettings(models.TransientModel):
         related="company_id.gm_dg_name", readonly=False,
         help="Propre à la société sélectionnée : imprimé dans le bloc "
              "signature des documents de mission.")
+    gm_dg_fonction = fields.Char(
+        related="company_id.gm_dg_fonction", readonly=False)
+
+    # --- Fiche d'imputation comptable (par société) ---
+    gm_imput_service = fields.Char(
+        related="company_id.gm_imput_service", readonly=False)
+    gm_imput_visa = fields.Char(
+        related="company_id.gm_imput_visa", readonly=False)
+    gm_imput_agence_siege = fields.Char(
+        related="company_id.gm_imput_agence_siege", readonly=False)
+    gm_imput_compte_charge = fields.Char(
+        related="company_id.gm_imput_compte_charge", readonly=False)
+    gm_imput_libelle_charge = fields.Char(
+        related="company_id.gm_imput_libelle_charge", readonly=False)
+    gm_imput_compte_justifier = fields.Char(
+        related="company_id.gm_imput_compte_justifier", readonly=False)
+    gm_imput_libelle_justifier = fields.Char(
+        related="company_id.gm_imput_libelle_justifier", readonly=False)
 
     # Qui peut INITIER une demande depuis le portail. Stockage explicite
     # "1"/"0" (pas de config_parameter automatique : décocher supprimerait

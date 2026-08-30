@@ -1,0 +1,897 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Carte « Mes évaluations » sur l'accueil du portail -->
+    <template id="portal_my_home_evaluation" name="Portail : carte Évaluations"
+              inherit_id="portal.portal_my_home" priority="50">
+        <xpath expr="//div[hasclass('o_portal_docs')]" position="inside">
+            <t t-call="portal.portal_docs_entry">
+                <t t-set="title">Mes évaluations</t>
+                <t t-set="url" t-value="'/my/evaluations'"/>
+                <t t-set="text">Consulter mon évaluation annuelle et m'auto-évaluer</t>
+                <t t-set="config_card" t-value="True"/>
+                <t t-set="placeholder_count" t-value="'appraisal_count'"/>
+            </t>
+            <t t-if="portail_is_evaluateur" t-call="portal.portal_docs_entry">
+                <t t-set="title">Évaluations à mener</t>
+                <t t-set="url" t-value="'/my/team/evaluations'"/>
+                <t t-set="text">Noter mes collaborateurs et suivre leur entretien</t>
+                <t t-set="config_card" t-value="True"/>
+                <t t-set="placeholder_count" t-value="'team_appraisal_count'"/>
+            </t>
+        </xpath>
+    </template>
+
+    <template id="portal_breadcrumbs_evaluation" name="Portail : fil d'ariane évaluations"
+              inherit_id="portal.portal_breadcrumbs" priority="50">
+        <xpath expr="//ol[hasclass('o_portal_submenu')]" position="inside">
+            <li t-if="page_name == 'appraisal'" class="breadcrumb-item">
+                <a t-if="appraisal" href="/my/evaluations">Mes évaluations</a>
+                <t t-else="">Mes évaluations</t>
+            </li>
+            <li t-if="page_name == 'appraisal' and appraisal" class="breadcrumb-item active">
+                <t t-esc="appraisal.ev_campagne_id.name or 'Évaluation'"/>
+            </li>
+            <li t-if="page_name == 'team_appraisal'" class="breadcrumb-item">
+                <a t-if="appraisal" href="/my/team/evaluations">Évaluations à mener</a>
+                <t t-else="">Évaluations à mener</t>
+            </li>
+            <li t-if="page_name == 'team_appraisal' and appraisal" class="breadcrumb-item active">
+                <t t-esc="appraisal.employee_id.name"/>
+            </li>
+        </xpath>
+    </template>
+
+    <!-- ==================== Liste de mes évaluations ==================== -->
+    <template id="portal_my_appraisals" name="Mes évaluations">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Mes évaluations</t>
+            </t>
+
+            <div t-if="success_message" class="alert alert-success mt-3" role="alert">
+                <t t-esc="success_message"/>
+            </div>
+
+            <t t-if="not appraisals">
+                <div class="alert alert-info mt-3" role="alert">
+                    Aucune évaluation ne vous concerne pour le moment.
+                </div>
+            </t>
+            <t t-if="appraisals" t-call="portal.portal_table">
+                <thead>
+                    <tr class="active">
+                        <th>Campagne</th>
+                        <th>Exercice</th>
+                        <th>Entretien prévu</th>
+                        <th class="text-center">Statut</th>
+                        <th class="text-end">Détail</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr t-foreach="appraisals" t-as="ap">
+                        <td>
+                            <a t-attf-href="/my/evaluations/#{ap.id}">
+                                <t t-esc="ap.ev_campagne_id.name or 'Évaluation annuelle'"/>
+                            </a>
+                        </td>
+                        <td><t t-esc="ap.ev_campagne_id.exercice or ''"/></td>
+                        <td><span t-field="ap.ev_entretien_debut" t-options="{'format': 'dd/MM/yyyy à HH:mm'}"/></td>
+                        <td class="text-center">
+                            <span t-if="ap.state == 'done'" class="badge rounded-pill text-bg-success">
+                                <t t-esc="state_labels.get(ap.state, ap.state)"/>
+                            </span>
+                            <span t-elif="ap.state == 'cancel'" class="badge rounded-pill text-bg-danger">
+                                <t t-esc="state_labels.get(ap.state, ap.state)"/>
+                            </span>
+                            <span t-else="" class="badge rounded-pill text-bg-info">
+                                <t t-esc="state_labels.get(ap.state, ap.state)"/>
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            <a t-attf-href="/my/evaluations/#{ap.id}"
+                               class="btn btn-sm btn-primary">
+                                <i class="fa fa-eye"/> Voir
+                            </a>
+                        </td>
+                    </tr>
+                </tbody>
+            </t>
+        </t>
+    </template>
+
+    <!-- ============ Grille notée, en lecture ============
+         Les deux colonnes côte à côte : l'auto-évaluation de l'agent et
+         la note du responsable, celle qui fait foi. Le même tableau sert
+         à l'agent, au responsable une fois sa notation publiée, et au
+         N+2 qui statue — seuls les intitulés de colonnes changent.
+         La visibilité de chaque colonne reste décidée par le module
+         métier (`ev_voir_notes_agent` / `ev_voir_notes_manager`). -->
+    <template id="portal_appraisal_grid" name="Portail : grille notée">
+        <t t-if="appraisal.ev_grille_id">
+            <h5 class="mt-4"><t t-esc="appraisal.ev_grille_id.name"/></h5>
+            <t t-set="notes"
+               t-value="{l.critere_id.id: l for l in appraisal.ev_note_ids}"/>
+            <t t-set="val_agent"
+               t-value="{l.critere_id.id: l.valeur_agent for l in appraisal.ev_note_ids if l.niveau_agent_id}"/>
+            <t t-set="val_manager"
+               t-value="{l.critere_id.id: l.valeur_manager for l in appraisal.ev_note_ids if l.niveau_manager_id}"/>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr class="active">
+                            <th>Bloc / Thème / Critère</th>
+                            <th t-if="vue.ev_voir_notes_agent" class="text-end">
+                                <t t-esc="libelle_agent"/>
+                            </th>
+                            <th t-if="vue.ev_voir_notes_manager" class="text-end">
+                                <t t-esc="libelle_manager"/>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <t t-foreach="appraisal.ev_grille_id.bloc_ids" t-as="bloc">
+                            <tr>
+                                <td><strong t-esc="bloc.name"/></td>
+                                <td t-if="vue.ev_voir_notes_agent" class="text-end">
+                                    <t t-set="s" t-value="bloc._score(val_agent)"/>
+                                    <strong t-esc="'%.2f' % s if s is not None else '—'"/>
+                                </td>
+                                <td t-if="vue.ev_voir_notes_manager" class="text-end">
+                                    <t t-set="s" t-value="bloc._score(val_manager)"/>
+                                    <strong t-esc="'%.2f' % s if s is not None else '—'"/>
+                                </td>
+                            </tr>
+                            <t t-foreach="bloc.theme_ids" t-as="theme">
+                                <tr>
+                                    <td style="padding-left:2rem"><em t-esc="theme.name"/></td>
+                                    <td t-if="vue.ev_voir_notes_agent" class="text-end"/>
+                                    <td t-if="vue.ev_voir_notes_manager" class="text-end"/>
+                                </tr>
+                                <tr t-foreach="theme.critere_ids" t-as="critere" class="text-muted">
+                                    <td style="padding-left:4rem"><t t-esc="critere.name"/></td>
+                                    <td t-if="vue.ev_voir_notes_agent" class="text-end">
+                                        <t t-esc="notes[critere.id].niveau_agent_id.name if critere.id in notes and notes[critere.id].niveau_agent_id else '—'"/>
+                                    </td>
+                                    <td t-if="vue.ev_voir_notes_manager" class="text-end">
+                                        <t t-esc="notes[critere.id].niveau_manager_id.name if critere.id in notes and notes[critere.id].niveau_manager_id else '—'"/>
+                                    </td>
+                                </tr>
+                            </t>
+                        </t>
+                        <tr>
+                            <td><strong>NOTE GLOBALE</strong></td>
+                            <td t-if="vue.ev_voir_notes_agent" class="text-end">
+                                <strong t-esc="'%.2f' % appraisal.ev_note_agent"/>
+                            </td>
+                            <td t-if="vue.ev_voir_notes_manager" class="text-end">
+                                <strong t-esc="'%.2f' % appraisal.ev_note_globale"/>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p t-if="not vue.ev_voir_notes_manager and attente_manager"
+               class="text-muted">
+                <t t-esc="attente_manager"/>
+            </p>
+        </t>
+    </template>
+
+    <!-- ===================== Détail d'une évaluation ===================== -->
+    <template id="portal_my_appraisal_detail" name="Mon évaluation">
+        <t t-call="portal.portal_layout">
+            <div class="row mt-3">
+                <div class="col-12 col-lg-9">
+                    <h4>
+                        <t t-esc="appraisal.ev_campagne_id.name or 'Évaluation annuelle'"/>
+                        <span t-if="appraisal.state == 'done'" class="badge rounded-pill text-bg-success ms-2">
+                            <t t-esc="state_labels.get(appraisal.state)"/>
+                        </span>
+                        <span t-else="" class="badge rounded-pill text-bg-info ms-2">
+                            <t t-esc="state_labels.get(appraisal.state)"/>
+                        </span>
+                    </h4>
+
+                    <div t-if="success_message" class="alert alert-success" role="alert">
+                        <t t-esc="success_message"/>
+                    </div>
+                    <div t-if="error and error.get('global')"
+                         class="alert alert-danger" role="alert">
+                        <t t-esc="error['global']"/>
+                    </div>
+
+                    <div t-if="appraisal.ev_motif_renvoi"
+                         class="alert alert-warning" role="alert">
+                        <strong><i class="fa fa-undo"/> Renvoyé pour correction<t t-if="appraisal.ev_renvoi_par"> par <t t-esc="appraisal.ev_renvoi_par"/></t>.</strong>
+                        <div class="mt-1" style="white-space: pre-line;"><t t-esc="appraisal.ev_motif_renvoi"/></div>
+                    </div>
+
+                    <!-- Invitation à s'auto-évaluer -->
+                    <div t-if="vue.ev_auto_modifiable" class="alert alert-info" role="alert">
+                        <strong>C'est à vous.</strong>
+                        Remplissez votre auto-évaluation sur la grille de la
+                        campagne, puis publiez-la : votre responsable ne la
+                        découvrira qu'à ce moment.
+                        <div class="mt-2">
+                            <a t-attf-href="/my/evaluations/#{appraisal.id}/auto-evaluation"
+                               class="btn btn-sm btn-primary">
+                                <i class="fa fa-pencil"/> Remplir mon auto-évaluation
+                            </a>
+                        </div>
+                    </div>
+                    <div t-if="appraisal.employee_feedback_published"
+                         class="alert alert-success" role="alert">
+                        <i class="fa fa-check"/> Votre auto-évaluation est publiée.
+                    </div>
+                    <!-- Auto-évaluation désactivée : mieux vaut le dire que
+                         laisser l'agent chercher un formulaire absent. -->
+                    <div t-if="not appraisal.ev_auto_evaluation_active"
+                         class="alert alert-secondary" role="alert">
+                        Cette campagne ne prévoit pas d'auto-évaluation :
+                        votre responsable vous notera, et vous verrez sa
+                        notation dès qu'il l'aura publiée.
+                    </div>
+
+                    <!-- Convocation à l'entretien : c'est une information
+                         que l'agent doit voir en arrivant, pas une ligne
+                         perdue dans un tableau. -->
+                    <div t-if="appraisal.ev_entretien_debut and appraisal.state != 'cancel'"
+                         t-attf-class="alert alert-#{'secondary' if appraisal.state == 'done' else 'primary'}"
+                         role="alert">
+                        <i class="fa fa-calendar"/>
+                        <t t-if="appraisal.state == 'done'">
+                            <strong>Votre entretien annuel a eu lieu le
+                            <span t-field="appraisal.ev_entretien_debut" t-options="{'format': 'dd/MM/yyyy à HH:mm'}"/>.</strong>
+                        </t>
+                        <t t-else="">
+                            <strong>Votre entretien annuel est fixé au
+                            <span t-field="appraisal.ev_entretien_debut" t-options="{'format': 'dd/MM/yyyy à HH:mm'}"/>.</strong>
+                            <t t-if="appraisal.ev_entretien_avec">
+                                Il sera mené par <t t-esc="appraisal.ev_entretien_avec"/>.
+                            </t>
+                            <div class="mt-1">
+                                Vous avez également reçu une invitation dans
+                                votre agenda.
+                            </div>
+                        </t>
+                    </div>
+
+                    <h5 class="mt-3">Informations</h5>
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr t-if="appraisal.ev_campagne_id">
+                                <th class="w-25">Campagne</th>
+                                <td><t t-esc="appraisal.ev_campagne_id.name"/>
+                                    <t t-if="appraisal.ev_campagne_id.exercice">
+                                        — exercice <t t-esc="appraisal.ev_campagne_id.exercice"/>
+                                    </t>
+                                </td>
+                            </tr>
+                            <tr t-if="appraisal.manager_ids">
+                                <th>Évaluateur(s)</th>
+                                <td><t t-esc="', '.join(appraisal.manager_ids.mapped('name'))"/></td>
+                            </tr>
+                            <tr t-if="appraisal.ev_phase_courante_id">
+                                <th>Phase en cours</th>
+                                <td><t t-esc="appraisal.ev_phase_courante_id.name"/></td>
+                            </tr>
+                            <tr t-if="appraisal.ev_entretien_debut">
+                                <th>Entretien prévu</th>
+                                <td><span t-field="appraisal.ev_entretien_debut" t-options="{'format': 'dd/MM/yyyy à HH:mm'}"/></td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Les objectifs de l'exercice : la commande passée à
+                         l'agent. Il ne les écrit pas — c'est son
+                         responsable qui les fixe — mais c'est LUI qui
+                         déclare où il en est, tout au long de l'année. -->
+                    <h5 class="mt-4">Mes objectifs de l'exercice</h5>
+                    <t t-if="not appraisal.ev_objectif_ids">
+                        <div class="alert alert-info" role="alert">
+                            Aucun objectif n'a encore été fixé pour cet
+                            exercice.
+                        </div>
+                    </t>
+                    <form t-if="appraisal.ev_objectif_ids" method="post"
+                          t-attf-action="/my/evaluations/#{appraisal.id}">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr class="active">
+                                        <th>Objectif</th>
+                                        <th style="width: 8rem;">Échéance</th>
+                                        <th style="width: 9rem;">Avancement</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr t-foreach="appraisal.ev_objectif_ids" t-as="goal">
+                                        <td>
+                                            <strong t-esc="goal.name"/>
+                                            <div t-if="goal.description"
+                                                 class="text-muted small"
+                                                 t-field="goal.description"/>
+                                        </td>
+                                        <td>
+                                            <span t-if="goal.deadline" t-field="goal.deadline"/>
+                                            <span t-else="" class="text-muted">—</span>
+                                        </td>
+                                        <td>
+                                            <select t-if="vue.ev_avancement_modifiable"
+                                                    class="form-select form-select-sm"
+                                                    t-attf-name="progress_#{goal.id}">
+                                                <option t-foreach="progressions or []" t-as="prog"
+                                                        t-att-value="prog[0]"
+                                                        t-att-selected="'selected' if goal.progression == prog[0] else None">
+                                                    <t t-esc="prog[1]"/>
+                                                </option>
+                                            </select>
+                                            <span t-else="" t-field="goal.progression"/>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div t-if="vue.ev_avancement_modifiable" class="mb-3">
+                            <button type="submit" name="action" value="progress_save"
+                                    class="btn btn-sm btn-primary">
+                                <i class="fa fa-save"/> Enregistrer l'avancement
+                            </button>
+                            <span class="text-muted small ms-2">
+                                Mettez-le à jour au fil de l'année : votre
+                                responsable le voit.
+                            </span>
+                        </div>
+                        <p t-if="not vue.ev_avancement_modifiable and motif_avancement"
+                           class="text-muted small">
+                            <i class="fa fa-lock"/> <t t-esc="motif_avancement"/>
+                        </p>
+                    </form>
+
+                    <!-- Notation : les colonnes suivent les règles de
+                         visibilité du module métier -->
+                    <t t-call="portail_evaluation.portal_appraisal_grid">
+                        <t t-set="libelle_agent">Mon appréciation</t>
+                        <t t-set="libelle_manager">Mon responsable</t>
+                        <t t-set="attente_manager">
+                            L'appréciation de votre responsable ne s'affichera
+                            qu'une fois qu'il l'aura publiée.
+                        </t>
+                    </t>
+
+                    <t t-if="vue.ev_voir_notes_agent and appraisal.employee_feedback">
+                        <h5 class="mt-4">Mes commentaires</h5>
+                        <div t-field="appraisal.employee_feedback"/>
+                    </t>
+                    <t t-if="vue.ev_voir_notes_manager and appraisal.manager_feedback">
+                        <h5 class="mt-4">Commentaires de mon responsable</h5>
+                        <div t-field="appraisal.manager_feedback"/>
+                    </t>
+
+                    <a href="/my/evaluations" class="btn btn-sm btn-secondary mt-3">
+                        <i class="fa fa-arrow-left"/> Retour à mes évaluations
+                    </a>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- ================= Formulaire d'auto-évaluation ================= -->
+    <template id="portal_my_appraisal_auto" name="Mon auto-évaluation">
+        <t t-call="portal.portal_layout">
+            <div class="row mt-3">
+                <div class="col-12 col-lg-9">
+                    <h4>Mon auto-évaluation</h4>
+                    <p class="text-muted">
+                        Positionnez-vous sur chaque critère. Vous pouvez
+                        enregistrer et revenir plus tard ; une fois publiée,
+                        votre auto-évaluation n'est plus modifiable et devient
+                        visible de votre responsable.
+                    </p>
+
+                    <div t-if="error.get('global')" class="alert alert-danger" role="alert">
+                        <t t-esc="error['global']"/>
+                    </div>
+                    <div t-if="appraisal.ev_motif_renvoi"
+                         class="alert alert-warning" role="alert">
+                        <strong><i class="fa fa-undo"/> Renvoyé pour correction<t t-if="appraisal.ev_renvoi_par"> par <t t-esc="appraisal.ev_renvoi_par"/></t>.</strong>
+                        <div class="mt-1" style="white-space: pre-line;"><t t-esc="appraisal.ev_motif_renvoi"/></div>
+                    </div>
+
+                    <div t-if="success_message" class="alert alert-success" role="alert">
+                        <t t-esc="success_message"/>
+                    </div>
+
+                    <form method="post"
+                          t-attf-action="/my/evaluations/#{appraisal.id}/auto-evaluation">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+
+                        <t t-foreach="appraisal.ev_grille_id.bloc_ids" t-as="bloc">
+                            <h5 class="mt-4"><t t-esc="bloc.name"/></h5>
+                            <t t-foreach="bloc.theme_ids" t-as="theme">
+                                <h6 class="text-muted mt-3"><t t-esc="theme.name"/></h6>
+                                <t t-set="notes"
+                                   t-value="{l.critere_id.id: l for l in appraisal.ev_note_ids}"/>
+                                <div class="mb-3" t-foreach="theme.critere_ids" t-as="critere">
+                                    <t t-set="ligne" t-value="notes.get(critere.id)"/>
+                                    <label class="form-label" t-attf-for="critere_#{ligne.id if ligne else 0}">
+                                        <t t-esc="critere.name"/>
+                                        <small t-if="critere.description" class="text-muted">
+                                            — <t t-esc="critere.description"/>
+                                        </small>
+                                    </label>
+                                    <select t-if="ligne" class="form-select"
+                                            t-attf-name="critere_#{ligne.id}"
+                                            t-attf-id="critere_#{ligne.id}">
+                                        <option value="">— Non renseigné —</option>
+                                        <option t-foreach="niveaux" t-as="niveau"
+                                                t-att-value="niveau.id"
+                                                t-att-selected="'selected' if ligne.niveau_agent_id.id == niveau.id else None">
+                                            <t t-esc="niveau.name"/>
+                                        </option>
+                                    </select>
+                                </div>
+                            </t>
+                        </t>
+
+                        <h5 class="mt-4">Mes commentaires</h5>
+                        <textarea name="employee_feedback" class="form-control" rows="6"
+                                  placeholder="Votre appréciation de l'année : réussites, difficultés, attentes..."><t t-esc="employee_feedback_texte"/></textarea>
+
+                        <div class="mt-3">
+                            <button type="submit" name="action" value="save"
+                                    class="btn btn-secondary">
+                                <i class="fa fa-save"/> Enregistrer
+                            </button>
+                            <button type="submit" name="action" value="publish"
+                                    class="btn btn-primary"
+                                    onclick="return confirm('Publier votre auto-évaluation ? Votre responsable pourra la consulter, et vous ne pourrez plus la modifier.');">
+                                <i class="fa fa-paper-plane"/> Publier
+                            </button>
+                            <a t-attf-href="/my/evaluations/#{appraisal.id}"
+                               class="btn btn-link">Annuler</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- ============== Espace évaluateur : liste ============== -->
+    <template id="portal_team_appraisals" name="Évaluations à mener">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Évaluations à mener</t>
+            </t>
+
+            <div t-if="success_message" class="alert alert-success mt-3" role="alert">
+                <t t-esc="success_message"/>
+            </div>
+
+            <h5 class="mt-3">En attente de mon action</h5>
+            <t t-if="not a_traiter">
+                <div class="alert alert-info" role="alert">
+                    Aucune évaluation n'attend votre action.
+                </div>
+            </t>
+            <div t-if="a_traiter" class="table-responsive">
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr class="active">
+                            <th>Collaborateur</th>
+                            <th>Campagne</th>
+                            <th>Phase en cours</th>
+                            <th class="text-end">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr t-foreach="a_traiter" t-as="ap">
+                            <td><t t-esc="ap.employee_id.name"/></td>
+                            <td><t t-esc="ap.ev_campagne_id.name or 'Évaluation annuelle'"/></td>
+                            <td><t t-esc="ap.ev_phase_courante_id.name or ''"/></td>
+                            <td class="text-end">
+                                <a t-attf-href="/my/team/evaluations/#{ap.id}"
+                                   class="btn btn-sm btn-primary">
+                                    <i class="fa fa-pencil"/> Traiter
+                                </a>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h5 class="mt-4">Mon périmètre</h5>
+            <t t-if="not autres">
+                <div class="alert alert-info" role="alert">
+                    Aucune autre évaluation dans votre périmètre.
+                </div>
+            </t>
+            <t t-if="autres" t-call="portal.portal_table">
+                <thead>
+                    <tr class="active">
+                        <th>Collaborateur</th>
+                        <th>Campagne</th>
+                        <th>Phase</th>
+                        <th class="text-center">Statut</th>
+                        <th class="text-end">Détail</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr t-foreach="autres" t-as="ap">
+                        <td><t t-esc="ap.employee_id.name"/></td>
+                        <td><t t-esc="ap.ev_campagne_id.name or 'Évaluation annuelle'"/></td>
+                        <td><t t-esc="ap.ev_phase_courante_id.name or '—'"/></td>
+                        <td class="text-center">
+                            <span t-if="ap.state == 'done'" class="badge rounded-pill text-bg-success">
+                                <t t-esc="state_labels.get(ap.state, ap.state)"/>
+                            </span>
+                            <span t-else="" class="badge rounded-pill text-bg-info">
+                                <t t-esc="state_labels.get(ap.state, ap.state)"/>
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            <a t-attf-href="/my/team/evaluations/#{ap.id}"
+                               class="btn btn-sm btn-secondary">
+                                <i class="fa fa-eye"/> Voir
+                            </a>
+                        </td>
+                    </tr>
+                </tbody>
+            </t>
+        </t>
+    </template>
+
+    <!-- ========= Espace évaluateur : noter un collaborateur ========= -->
+    <template id="portal_team_appraisal_detail" name="Évaluer un collaborateur">
+        <t t-call="portal.portal_layout">
+            <div class="row mt-3">
+                <div class="col-12 col-lg-9">
+                    <h4>
+                        Évaluation de <t t-esc="appraisal.employee_id.name"/>
+                        <span class="badge rounded-pill text-bg-info ms-2">
+                            <t t-esc="state_labels.get(appraisal.state)"/>
+                        </span>
+                    </h4>
+                    <p class="text-muted">
+                        <t t-esc="appraisal.ev_campagne_id.name or 'Évaluation annuelle'"/>
+                        <t t-if="appraisal.ev_phase_courante_id">
+                            — phase : <t t-esc="appraisal.ev_phase_courante_id.name"/>
+                        </t>
+                    </p>
+
+                    <div t-if="error.get('global')" class="alert alert-danger" role="alert">
+                        <t t-esc="error['global']"/>
+                    </div>
+                    <div t-if="appraisal.ev_motif_renvoi"
+                         class="alert alert-warning" role="alert">
+                        <strong><i class="fa fa-undo"/> Renvoyé pour correction<t t-if="appraisal.ev_renvoi_par"> par <t t-esc="appraisal.ev_renvoi_par"/></t>.</strong>
+                        <div class="mt-1" style="white-space: pre-line;"><t t-esc="appraisal.ev_motif_renvoi"/></div>
+                    </div>
+                    <div t-if="success_message" class="alert alert-success" role="alert">
+                        <t t-esc="success_message"/>
+                    </div>
+                    <div t-if="appraisal.manager_feedback_published"
+                         class="alert alert-success" role="alert">
+                        <i class="fa fa-check"/> Votre notation est publiée.
+                    </div>
+                    <!-- Saisie par anticipation : la grille lui est ouverte
+                         avant que le circuit ne lui donne la main. -->
+                    <div t-if="vue.ev_notation_modifiable and not vue.ev_can_agir"
+                         class="alert alert-info" role="alert">
+                        <strong>Vous pouvez noter dès maintenant.</strong>
+                        Votre notation ne dépend pas de l'auto-évaluation du
+                        collaborateur : remplissez la grille et publiez-la
+                        quand vous voulez.
+                        <t t-if="appraisal.ev_phase_courante_id">
+                            La phase « <t t-esc="appraisal.ev_phase_courante_id.name"/> »
+                            suit son cours de son côté ; vous validerez la
+                            vôtre quand elle vous reviendra.
+                        </t>
+                    </div>
+                    <div t-if="appraisal.ev_auto_evaluation_active and not appraisal.employee_feedback_published"
+                         class="alert alert-secondary" role="alert">
+                        L'auto-évaluation du collaborateur ne s'affichera
+                        qu'une fois qu'il l'aura publiée.
+                    </div>
+                    <div t-if="not appraisal.ev_auto_evaluation_active"
+                         class="alert alert-secondary" role="alert">
+                        Cette campagne ne prévoit pas d'auto-évaluation :
+                        votre notation est la seule.
+                    </div>
+
+                    <t t-if="vue.ev_voir_notes_agent and appraisal.employee_feedback">
+                        <h5 class="mt-3">Commentaires du collaborateur</h5>
+                        <div t-field="appraisal.employee_feedback"/>
+                    </t>
+
+                    <!-- ===== Objectifs de l'exercice =====
+                         Chaque objectif porte son propre formulaire de
+                         retrait : un formulaire HTML ne s'imbrique pas, et
+                         il faut pouvoir désigner UNE ligne à la fois. -->
+                    <h5 class="mt-4">Objectifs de l'exercice</h5>
+                    <t t-if="not appraisal.ev_objectif_ids">
+                        <div class="alert alert-warning" role="alert">
+                            Aucun objectif n'est encore fixé pour cet exercice.
+                        </div>
+                    </t>
+                    <div t-if="appraisal.ev_objectif_ids" class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr class="active">
+                                    <th>Objectif</th>
+                                    <th style="width: 8rem;">Échéance</th>
+                                    <th style="width: 8rem;">Avancement</th>
+                                    <th t-if="vue.ev_objectifs_modifiable" style="width: 4rem;"/>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr t-foreach="appraisal.ev_objectif_ids" t-as="goal">
+                                    <td>
+                                        <strong t-esc="goal.name"/>
+                                        <div t-if="goal.description"
+                                             class="text-muted small"
+                                             t-field="goal.description"/>
+                                    </td>
+                                    <td>
+                                        <span t-if="goal.deadline" t-field="goal.deadline"/>
+                                        <span t-else="" class="text-muted">—</span>
+                                    </td>
+                                    <td><span t-field="goal.progression"/></td>
+                                    <td t-if="vue.ev_objectifs_modifiable" class="text-end">
+                                        <form method="post"
+                                              t-attf-action="/my/team/evaluations/#{appraisal.id}">
+                                            <input type="hidden" name="csrf_token"
+                                                   t-att-value="request.csrf_token()"/>
+                                            <input type="hidden" name="goal_id"
+                                                   t-att-value="goal.id"/>
+                                            <button type="submit" name="action"
+                                                    value="goal_remove"
+                                                    class="btn btn-sm btn-link text-danger p-0"
+                                                    title="Retirer cet objectif"
+                                                    onclick="return confirm('Retirer cet objectif ?');">
+                                                <i class="fa fa-trash"/>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <form t-if="vue.ev_objectifs_modifiable" method="post"
+                          class="border rounded p-3 mb-3"
+                          t-attf-action="/my/team/evaluations/#{appraisal.id}">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <div class="row">
+                            <div class="col-12 col-md-8 mb-2">
+                                <label class="form-label" for="goal_name">
+                                    Nouvel objectif
+                                </label>
+                                <input type="text" name="goal_name" id="goal_name"
+                                       class="form-control" required="required"
+                                       placeholder="Ce que vous attendez de votre collaborateur cette année"/>
+                            </div>
+                            <div class="col-12 col-md-4 mb-2">
+                                <label class="form-label" for="goal_deadline">
+                                    Échéance
+                                    <span class="text-muted small">(facultative)</span>
+                                </label>
+                                <input type="date" name="goal_deadline"
+                                       id="goal_deadline" class="form-control"/>
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label" for="goal_description">
+                                Précisions
+                                <span class="text-muted small">(facultatives)</span>
+                            </label>
+                            <textarea name="goal_description" id="goal_description"
+                                      class="form-control" rows="2"
+                                      placeholder="Résultat attendu, moyens, indicateur de réussite..."/>
+                        </div>
+                        <button type="submit" name="action" value="goal_add"
+                                class="btn btn-primary btn-sm">
+                            <i class="fa fa-plus"/> Ajouter l'objectif
+                        </button>
+                    </form>
+                    <p t-if="not vue.ev_objectifs_modifiable and motif_objectifs"
+                       class="text-muted small">
+                        <i class="fa fa-lock"/> <t t-esc="motif_objectifs"/>
+                    </p>
+
+                    <!-- Quand l'évaluateur ne note pas — le N+2 qui
+                         statue, ou le responsable une fois sa notation
+                         publiée — on montre les DEUX colonnes côte à
+                         côte, en lecture. Un formulaire grisé de quinze
+                         listes déroulantes ne se lit pas. -->
+                    <!-- Une grille en lecture s'explique : soit la
+                         notation est publiée, soit ce n'est pas encore le
+                         moment. Sans un mot, l'évaluateur croit à une
+                         panne. -->
+                    <div t-if="not vue.ev_notation_modifiable and motif_notation and not appraisal.manager_feedback_published"
+                         class="alert alert-info" role="alert">
+                        <i class="fa fa-lock"/>
+                        <strong>Vous ne pouvez pas noter pour l'instant.</strong>
+                        <div class="mt-1"><t t-esc="motif_notation"/></div>
+                    </div>
+
+                    <t t-if="not vue.ev_notation_modifiable">
+                        <t t-call="portail_evaluation.portal_appraisal_grid">
+                            <t t-set="libelle_agent">Auto-évaluation</t>
+                            <t t-set="libelle_manager">Note du responsable</t>
+                            <t t-set="attente_manager"/>
+                        </t>
+                        <t t-if="vue.ev_voir_notes_manager and appraisal.manager_feedback">
+                            <h5 class="mt-4">Commentaires du responsable</h5>
+                            <div t-field="appraisal.manager_feedback"/>
+                        </t>
+                    </t>
+
+                    <form method="post" enctype="multipart/form-data"
+                          t-attf-action="/my/team/evaluations/#{appraisal.id}">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+
+                        <t t-if="vue.ev_notation_modifiable and appraisal.ev_grille_id">
+                            <h5 class="mt-4"><t t-esc="appraisal.ev_grille_id.name"/></h5>
+                            <t t-set="notes"
+                               t-value="{l.critere_id.id: l for l in appraisal.ev_note_ids}"/>
+                            <t t-foreach="appraisal.ev_grille_id.bloc_ids" t-as="bloc">
+                                <h6 class="mt-3"><strong t-esc="bloc.name"/></h6>
+                                <t t-foreach="bloc.theme_ids" t-as="theme">
+                                    <p class="text-muted mb-1"><em t-esc="theme.name"/></p>
+                                    <div class="mb-3" t-foreach="theme.critere_ids" t-as="critere">
+                                        <t t-set="ligne" t-value="notes.get(critere.id)"/>
+                                        <label class="form-label">
+                                            <t t-esc="critere.name"/>
+                                            <small t-if="vue.ev_voir_notes_agent and ligne and ligne.niveau_agent_id"
+                                                   class="text-muted">
+                                                — auto-évaluation : <t t-esc="ligne.niveau_agent_id.name"/>
+                                            </small>
+                                        </label>
+                                        <select t-if="ligne" class="form-select"
+                                                t-attf-name="critere_#{ligne.id}"
+                                                t-att-disabled="None if vue.ev_notation_modifiable else 'disabled'">
+                                            <option value="">— Non noté —</option>
+                                            <option t-foreach="niveaux" t-as="niveau"
+                                                    t-att-value="niveau.id"
+                                                    t-att-selected="'selected' if ligne.niveau_manager_id.id == niveau.id else None">
+                                                <t t-esc="niveau.name"/>
+                                            </option>
+                                        </select>
+                                    </div>
+                                </t>
+                            </t>
+
+                            <h5 class="mt-4">Mes commentaires</h5>
+                            <textarea name="manager_feedback" class="form-control" rows="6"
+                                      t-att-disabled="None if vue.ev_notation_modifiable else 'disabled'"
+                                      placeholder="Appréciation générale, points forts, axes de progrès..."><t t-esc="manager_feedback_texte"/></textarea>
+
+                            <div class="mt-3" t-if="vue.ev_notation_modifiable">
+                                <button type="submit" name="action" value="save"
+                                        class="btn btn-secondary">
+                                    <i class="fa fa-save"/> Enregistrer
+                                </button>
+                                <button type="submit" name="action" value="publish"
+                                        class="btn btn-primary"
+                                        onclick="return confirm('Publier votre notation ? Le collaborateur pourra la consulter, et vous ne pourrez plus la modifier.');">
+                                    <i class="fa fa-paper-plane"/> Publier ma notation
+                                </button>
+                            </div>
+                        </t>
+
+                        <!-- Dernier temps : la note est arrêtée, il reste
+                             à la restituer de vive voix. -->
+                        <t t-if="vue.ev_entretien_modifiable">
+                            <h5 class="mt-4">Entretien annuel</h5>
+                            <p class="text-muted">
+                                Fixez la date de l'entretien, puis déclarez-le
+                                réalisé une fois qu'il aura eu lieu — ce qui
+                                clôturera l'évaluation.
+                            </p>
+                            <t t-set="rdv" t-value="appraisal.meeting_ids[:1]"/>
+                            <div class="row">
+                                <div class="col-12 col-md-4 mb-2">
+                                    <label class="form-label" for="ev_date_entretien">
+                                        Date de l'entretien
+                                    </label>
+                                    <input type="date" name="date_entretien"
+                                           id="ev_date_entretien" class="form-control"
+                                           t-att-value="rdv.start.strftime('%Y-%m-%d') if rdv else ''"/>
+                                </div>
+                                <div class="col-12 col-md-3 mb-2">
+                                    <label class="form-label" for="ev_heure_entretien">
+                                        Heure
+                                    </label>
+                                    <input type="time" name="heure_entretien"
+                                           id="ev_heure_entretien" class="form-control"
+                                           t-att-value="rdv.start.strftime('%H:%M') if rdv else '09:00'"/>
+                                </div>
+                            </div>
+                            <p t-if="rdv" class="text-muted small">
+                                <i class="fa fa-calendar-check-o"/>
+                                Entretien programmé le
+                                <strong t-esc="rdv.start.strftime('%d/%m/%Y à %H:%M')"/>.
+                                Le collaborateur et vous y êtes conviés.
+                            </p>
+                            <button type="submit" name="action" value="interview_set"
+                                    class="btn btn-secondary btn-sm mb-2">
+                                <i class="fa fa-calendar"/> Enregistrer la date
+                            </button>
+
+                            <!-- L'entretien se tient hors du logiciel : ce
+                                 document en est la seule trace, et il est
+                                 exigé avant la clôture. -->
+                            <h6 class="mt-3">Compte-rendu de l'entretien</h6>
+                            <div t-if="appraisal.ev_compte_rendu"
+                                 class="alert alert-success py-2" role="alert">
+                                <i class="fa fa-paperclip"/>
+                                Déposé :
+                                <strong t-esc="appraisal.ev_compte_rendu_nom"/>.
+                                Déposer un autre fichier le remplacera.
+                            </div>
+                            <div t-else="" class="alert alert-warning py-2" role="alert">
+                                <i class="fa fa-exclamation-triangle"/>
+                                Aucun compte-rendu déposé. Il est exigé avant
+                                de pouvoir clôturer l'évaluation.
+                            </div>
+                            <div class="row">
+                                <div class="col-12 col-md-5 mb-2">
+                                    <input type="file" name="compte_rendu"
+                                           class="form-control form-control-sm"
+                                           accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"/>
+                                    <span class="text-muted small">
+                                        PDF, Word ou image, 5 Mo au maximum.
+                                    </span>
+                                </div>
+                                <div class="col-12 col-md-4 mb-2">
+                                    <button type="submit" name="action" value="report_add"
+                                            class="btn btn-secondary btn-sm">
+                                        <i class="fa fa-upload"/> Déposer le compte-rendu
+                                    </button>
+                                </div>
+                            </div>
+                        </t>
+
+                        <t t-if="vue.ev_can_agir">
+                            <h5 class="mt-4">Suite du circuit</h5>
+                            <div class="mb-2">
+                                <label class="form-label" for="ev_comment">
+                                    Commentaire
+                                    <span class="text-muted small">(obligatoire pour renvoyer)</span>
+                                </label>
+                                <textarea name="comment" id="ev_comment"
+                                          class="form-control" rows="2"/>
+                            </div>
+                            <button t-if="vue.ev_entretien_modifiable"
+                                    type="submit" name="action" value="validate"
+                                    class="btn btn-success"
+                                    onclick="return confirm('Déclarer l’entretien réalisé ? L’évaluation sera clôturée.');">
+                                <i class="fa fa-check"/> L'entretien a eu lieu
+                            </button>
+                            <button t-else="" type="submit" name="action" value="validate"
+                                    class="btn btn-success"
+                                    onclick="return confirm('Valider cette phase ?');">
+                                <i class="fa fa-check"/> Valider la phase
+                            </button>
+                            <button type="submit" name="action" value="send_back"
+                                    class="btn btn-outline-secondary"
+                                    onclick="return confirm('Renvoyer pour correction ?');">
+                                <i class="fa fa-undo"/> Renvoyer pour correction
+                            </button>
+                        </t>
+                    </form>
+
+                    <a href="/my/team/evaluations" class="btn btn-sm btn-secondary mt-3">
+                        <i class="fa fa-arrow-left"/> Retour aux évaluations à mener
+                    </a>
+                </div>
+            </div>
+        </t>
+    </template>
+
+</odoo>
