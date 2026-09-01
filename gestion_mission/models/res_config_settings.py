@@ -44,6 +44,14 @@ class ResConfigSettings(models.TransientModel):
         help="L'employé peut créer et soumettre ses propres demandes de "
              "mission depuis le portail. Décoché : il ne fait que suivre "
              "les demandes créées pour lui.")
+    gm_decompte_individuel = fields.Boolean(
+        string="Chaque missionnaire ne tire que sa propre ligne",
+        help="Coché : depuis le portail, un simple membre télécharge un "
+             "« décompte individuel » ne portant que ses montants. Le chef "
+             "de mission et les valideurs continuent de recevoir la fiche "
+             "complète — ils répondent du dossier et statuent sur le total "
+             "du groupe. "
+             "Décoché : tout membre voit la fiche complète.")
     gm_portal_chef_can_create = fields.Boolean(
         string="Les chefs créent pour leurs collaborateurs (portail)",
         help="Un supérieur hiérarchique peut créer une demande au nom d'un "
@@ -59,6 +67,8 @@ class ResConfigSettings(models.TransientModel):
                 "gm.portal_employee_can_create", "1") == "1",
             gm_portal_chef_can_create=icp.get_param(
                 "gm.portal_chef_can_create", "1") == "1",
+            gm_decompte_individuel=icp.get_param(
+                "gm.decompte_individuel", "0") == "1",
         )
         return res
 
@@ -69,3 +79,5 @@ class ResConfigSettings(models.TransientModel):
                       "1" if self.gm_portal_employee_can_create else "0")
         icp.set_param("gm.portal_chef_can_create",
                       "1" if self.gm_portal_chef_can_create else "0")
+        icp.set_param("gm.decompte_individuel",
+                      "1" if self.gm_decompte_individuel else "0")

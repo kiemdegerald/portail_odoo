@@ -22,7 +22,7 @@ depuis le portail) est assurée par le module compagnon ``portail_mission``.
     "author": "LICELI Technologies",
     "website": "https://www.liceli-technologies.com",
     "category": "Human Resources",
-    "version": "17.0.0.21.0",
+    "version": "17.0.0.32.0",
     "license": "LGPL-3",
     "depends": [
         "hr",
@@ -38,6 +38,7 @@ depuis le portail) est assurée par le module compagnon ``portail_mission``.
         "views/gm_validation_views.xml",
         "views/gm_perdiem_views.xml",
         "views/gm_mission_views.xml",
+        "views/gm_chauffeur_views.xml",
         "views/gm_settings_views.xml",
     ],
     "application": True,

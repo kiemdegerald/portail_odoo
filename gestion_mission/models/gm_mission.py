@@ -64,6 +64,10 @@ class GmMission(models.Model):
         help="Nombre de jours de mission, bornes incluses.")
     transport = fields.Selection(
         MISSION_TRANSPORTS, string="Moyen de transport", default="service")
+    immatriculation = fields.Char(
+        string="Immatriculation",
+        help="Immatriculation du véhicule, imprimée à la suite du moyen de "
+             "déplacement (ex. « Véhicule BF 1666 E3 03 »). Facultative.")
     description = fields.Text(
         string="Précisions",
         help="Contexte, participants, programme prévisionnel...")
@@ -128,6 +132,11 @@ class GmMission(models.Model):
         string="Indemnité de mission", copy=False,
         compute="_compute_indemnite_total", store=True,
         help="Somme des indemnités de tous les membres.")
+    indemnite_ids = fields.One2many(
+        "gm.mission.indemnite", "mission_id",
+        string="Détail des indemnités", copy=False, readonly=True,
+        help="Une ligne par missionnaire et par type d'indemnité, générée "
+             "à la soumission depuis le barème.")
     frais_ids = fields.One2many(
         "gm.mission.frais", "mission_id",
         string="Autres frais (à justifier)", copy=False,
@@ -460,7 +469,20 @@ class GmMission(models.Model):
         le barème est modifié pendant la circulation du dossier."""
         self.ensure_one()
         pct = self._avance_pct()
+        Ligne = self.env["gm.mission.indemnite"]
         for membre in self.membre_ids:
+            # Un chauffeur du répertoire n'a ni classification ni barème :
+            # ses indemnités ont été saisies à la main, on les garde telles
+            # quelles et on se contente de calculer son avance.
+            if not membre.employee_id:
+                total = sum(membre.indemnite_ids.mapped("montant"))
+                membre.write({
+                    "categorie_agent": False,
+                    "indemnite_jour": 0.0,
+                    "avance_montant": self.currency_id.round(
+                        (total + membre.autres_frais) * pct / 100.0),
+                })
+                continue
             categorie = self._get_agent_category(membre.employee_id)
             if not categorie:
                 raise UserError(_(
@@ -468,9 +490,9 @@ class GmMission(models.Model):
                     "classification (grille salariale), sa catégorie "
                     "d'agent est donc inconnue. Contactez le service RH.",
                     membre.employee_id.name))
-            rate = self.env["gm.perdiem.rate"].get_rate(
+            rates = self.env["gm.perdiem.rate"].get_rates(
                 self.zone_id, categorie, self.company_id)
-            if not rate:
+            if not rates:
                 raise UserError(_(
                     "Aucun barème d'indemnité pour la zone « %(zone)s » et "
                     "la catégorie « %(cat)s » (membre : %(emp)s). Demandez "
@@ -478,11 +500,23 @@ class GmMission(models.Model):
                     "Configuration).",
                     zone=self.zone_id.name, cat=categorie,
                     emp=membre.employee_id.name))
-            total = rate.montant_jour * self.duration
+            # Une ligne par type d'indemnité : c'est le détail que la
+            # banque veut lire poste par poste. La somme reste la même
+            # qu'avant si un seul type est configuré.
+            membre.indemnite_ids.unlink()
+            Ligne.create([{
+                "mission_id": self.id,
+                "membre_id": membre.id,
+                "type_id": rate.type_id.id,
+                "sequence": rate.type_id.sequence,
+                "jours": self.duration,
+                "montant_jour": rate.montant_jour,
+                "montant": rate.montant_jour * self.duration,
+            } for rate in rates])
+            total = sum(r.montant_jour for r in rates) * self.duration
             membre.write({
                 "categorie_agent": categorie,
-                "indemnite_jour": rate.montant_jour,
-                "indemnite_total": total,
+                "indemnite_jour": sum(r.montant_jour for r in rates),
                 "avance_montant": self.currency_id.round(
                     (total + membre.autres_frais) * pct / 100.0),
             })
@@ -493,14 +527,41 @@ class GmMission(models.Model):
             "indemnite_jour": chef.indemnite_jour,
         })
 
+    def unlink(self):
+        """Efface la mission APRÈS ses lignes, et dans le bon ordre.
+
+        Sans cela, la suppression échouait sur « Enregistrement inexistant
+        ou supprimé » : Odoo effaçait les frais, marquait le total
+        « autres frais » du membre à recalculer, puis effaçait le membre —
+        et tentait ensuite d'écrire ce total sur une ligne disparue.
+
+        On solde donc les recalculs pendant que les membres existent
+        encore, avant de les supprimer à leur tour.
+        """
+        contexte = self.with_context(gm_suppression_mission=True)
+        for mission in contexte:
+            mission.indemnite_ids.unlink()
+            mission.frais_ids.unlink()
+            # Les totaux des membres se recalculent ICI, tant qu'ils sont
+            # encore là.
+            self.env.flush_all()
+            mission.membre_ids.unlink()
+            self.env.flush_all()
+        return super(GmMission, contexte).unlink()
+
     def _clear_indemnites(self):
         """Efface la photo financière de tous les membres (retour en
         brouillon : une nouvelle photo sera prise à la re-soumission). Les
         membres et leurs « autres frais » saisis sont conservés."""
+        # Le total du membre se recalcule tout seul depuis ses lignes :
+        # les effacer suffit à remettre l'indemnité à zéro. On ÉPARGNE
+        # celles des chauffeurs : elles ont été saisies à la main, aucun
+        # barème ne saurait les régénérer.
+        self.membre_ids.indemnite_ids.filtered(
+            lambda l: l.membre_id.employee_id).unlink()
         self.membre_ids.write({
             "categorie_agent": False,
             "indemnite_jour": 0,
-            "indemnite_total": 0,
             "avance_montant": 0,
         })
         self.write({
@@ -679,7 +740,7 @@ class GmMission(models.Model):
                                    for l in lines),
                 detail="; ".join(
                     "%s (%s, %s j × %s = %s)" % (
-                        m.employee_id.name, m.categorie_agent,
+                        m.nom_affiche, m.categorie_agent,
                         mission.duration, m.indemnite_jour,
                         m.indemnite_total)
                     for m in mission.membre_ids),

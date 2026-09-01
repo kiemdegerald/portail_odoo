@@ -9,6 +9,7 @@
             <tree string="Barème des indemnités" editable="bottom">
                 <field name="zone_id" options="{'no_create': True}"/>
                 <field name="categorie"/>
+                <field name="type_id" options="{'no_create_edit': True}"/>
                 <field name="montant_jour"/>
                 <field name="currency_id" column_invisible="1"/>
                 <field name="company_id" groups="base.group_multi_company"
@@ -27,9 +28,14 @@
             </p>
             <p>
                 Un montant par jour, pour chaque combinaison zone de mission
-                × catégorie d'agent (les catégories proviennent de la grille
-                salariale). Les montants sont figés sur chaque demande au
-                moment de sa soumission.
+                × catégorie d'agent × type d'indemnité (les catégories
+                proviennent de la grille salariale). Pas de ligne, pas de
+                droit : un agent ne touche que les types qui lui sont
+                ouverts dans sa zone.
+            </p>
+            <p>
+                Les montants sont figés sur chaque demande au moment de sa
+                soumission.
             </p>
         </field>
     </record>
@@ -37,6 +43,47 @@
     <menuitem id="menu_gm_perdiem_rate" name="Barème des indemnités"
               parent="menu_gm_config" action="action_gm_perdiem_rate"
               sequence="20"/>
+
+
+    <!-- Types d'indemnité (référentiel configurable) -->
+    <record id="view_gm_indemnite_type_tree" model="ir.ui.view">
+        <field name="name">gm.indemnite.type.tree</field>
+        <field name="model">gm.indemnite.type</field>
+        <field name="arch" type="xml">
+            <tree string="Types d'indemnité" editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="company_id" groups="base.group_multi_company"
+                       options="{'no_create': True}"/>
+                <field name="active" widget="boolean_toggle"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_gm_indemnite_type" model="ir.actions.act_window">
+        <field name="name">Types d'indemnité</field>
+        <field name="res_model">gm.indemnite.type</field>
+        <field name="view_mode">tree</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Définissez les postes de l'indemnité de mission
+            </p>
+            <p>
+                Restauration, hébergement, transport... à vous de choisir le
+                découpage. Un seul type suffit si vous préférez une
+                indemnité journalière unique : c'est alors le fonctionnement
+                d'origine.
+            </p>
+            <p>
+                L'ordre des lignes est celui des colonnes sur la fiche de
+                décompte : glissez-les pour le changer.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_gm_indemnite_type" name="Types d'indemnité"
+              parent="menu_gm_config" action="action_gm_indemnite_type"
+              sequence="19"/>
 
 
     <!-- Zones de mission (référentiel configurable) -->

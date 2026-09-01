@@ -25,7 +25,7 @@
                 <tr t-foreach="doc.membre_ids" t-as="membre">
                     <td style="border: 1px solid black; padding: 4px; text-align: center;"><t t-out="'%02d' % (membre_index + 1)"/></td>
                     <td style="border: 1px solid black; padding: 4px;">
-                        <span t-field="membre.employee_id.name"/>
+                        <span t-field="membre.nom_affiche"/>
                         <t t-if="len(doc.membre_ids) &gt; 1 and membre.is_chef">
                             <br/><span style="font-style: italic; font-size: 90%;">(chef de mission)</span>
                         </t>
@@ -44,7 +44,7 @@
         <p class="mb-1"><strong>Date de départ prévue :</strong> <span t-out="doc.date_depart and doc.date_depart.strftime('%d/%m/%Y') or ''"/></p>
         <p class="mb-1"><strong>Date de retour prévue :</strong> <span t-out="doc.date_retour and doc.date_retour.strftime('%d/%m/%Y') or ''"/></p>
         <p class="mb-1"><strong>Nombre de jours prévus :</strong> <t t-out="'%02d' % doc.duration"/> jour<t t-if="doc.duration &gt; 1">s</t></p>
-        <p class="mb-1"><strong>Moyen de déplacement :</strong> <t t-out="dict(doc._fields['transport'].selection).get(doc.transport, '')"/></p>
+        <p class="mb-1"><strong>Moyen de déplacement :</strong> <t t-out="dict(doc._fields['transport'].selection).get(doc.transport, '')"/><t t-if="doc.immatriculation"> <t t-out="doc.immatriculation"/></t></p>
     </template>
 
     <!-- Bloc signature (à droite, comme sur le document réel) : ville de
@@ -92,8 +92,18 @@
                     <div class="page">
                         <t t-set="definitif" t-value="doc.state in ('returned', 'closed')"/>
                         <t t-set="jours" t-value="doc.duration_reelle if definitif and doc.duration_reelle else doc.duration"/>
+                        <!-- Décompte INDIVIDUEL : le portail passe le
+                             missionnaire dans le contexte quand la banque a
+                             choisi que chacun ne tire que sa propre ligne.
+                             Sans ce contexte, le document reste collectif —
+                             c'est celui que la banque connaît. -->
+                        <t t-set="membre_seul"
+                           t-value="doc.membre_ids.filtered(lambda m: m.id == (env.context.get('gm_decompte_membre_id') or 0))"/>
+                        <t t-set="membres_decompte"
+                           t-value="membre_seul or doc.membre_ids"/>
                         <h4 class="text-center fw-bold text-decoration-underline mt-3 mb-2">
-                            FICHE DE DECOMPTE DES FRAIS DE MISSION
+                            <t t-if="membre_seul">DECOMPTE INDIVIDUEL DES FRAIS DE MISSION</t>
+                            <t t-else="">FICHE DE DECOMPTE DES FRAIS DE MISSION</t>
                         </h4>
                         <p class="fw-bold mb-1">Réf. OM : N°<span t-field="doc.name"/></p>
                         <p class="fst-italic mb-3">
@@ -106,34 +116,55 @@
 
                         <table style="border-collapse: collapse; width: 100%; margin-top: 16px; margin-bottom: 8px;">
                             <thead>
+                                <!-- Une colonne par type d'indemnite
+                                     configure, dans l'ordre choisi par la
+                                     banque. Repli sur une colonne unique
+                                     pour les missions anterieures au
+                                     decoupage, qui n'ont pas de lignes. -->
+                                <t t-set="types"
+                                   t-value="doc.indemnite_ids.type_id.sorted(lambda t: (t.sequence, t.id))"/>
                                 <tr>
                                     <th rowspan="2" style="border: 1px solid black; padding: 4px; text-align: center; vertical-align: middle; width: 34%;">Nom et Prénom(s)</th>
-                                    <th colspan="3" style="border: 1px solid black; padding: 4px; text-align: center;">Total reçu par missionnaire</th>
+                                    <th t-att-colspan="(len(types) or 1) + 2" style="border: 1px solid black; padding: 4px; text-align: center;">Total reçu par missionnaire</th>
                                 </tr>
                                 <tr>
-                                    <th style="border: 1px solid black; padding: 4px; text-align: center;">Perdiems<br/>(<t t-out="'%02d' % jours"/> jours)</th>
+                                    <t t-if="types">
+                                        <th t-foreach="types" t-as="type_ind"
+                                            style="border: 1px solid black; padding: 4px; text-align: center;"><t t-out="type_ind.name"/><br/>(<t t-out="'%02d' % jours"/> jours)</th>
+                                    </t>
+                                    <th t-else="" style="border: 1px solid black; padding: 4px; text-align: center;">Perdiems<br/>(<t t-out="'%02d' % jours"/> jours)</th>
                                     <th style="border: 1px solid black; padding: 4px; text-align: center;">Autres frais<br/>(à justifier)</th>
                                     <th style="border: 1px solid black; padding: 4px; text-align: center;">Total</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr t-foreach="doc.membre_ids" t-as="membre">
+                                <tr t-foreach="membres_decompte" t-as="membre">
                                     <td style="border: 1px solid black; padding: 4px;">
-                                        <span t-field="membre.employee_id.name"/>
+                                        <span t-field="membre.nom_affiche"/>
                                         <t t-if="len(doc.membre_ids) &gt; 1 and membre.is_chef">
                                             <span style="font-style: italic; font-size: 90%;"> (chef de mission)</span>
                                         </t>
                                     </td>
-                                    <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="membre.indemnite_total"
+                                    <t t-if="types">
+                                        <td t-foreach="types" t-as="type_ind" style="border: 1px solid black; padding: 4px; text-align: right;"><span
+                                            t-out="sum(membre.indemnite_ids.filtered(lambda l: l.type_id == type_ind).mapped('montant'))"
+                                            t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
+                                    </t>
+                                    <td t-else="" style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="membre.indemnite_total"
                                               t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
                                     <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="membre.autres_frais"
                                               t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
                                     <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="membre.total_du"
                                               t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
                                 </tr>
-                                <tr class="fw-bold">
+                                <tr t-if="not membre_seul" class="fw-bold">
                                     <td style="border: 1px solid black; padding: 4px;">TOTAL PAR RUBRIQUE</td>
-                                    <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="doc.indemnite_total"
+                                    <t t-if="types">
+                                        <td t-foreach="types" t-as="type_ind" style="border: 1px solid black; padding: 4px; text-align: right;"><span
+                                            t-out="sum(doc.indemnite_ids.filtered(lambda l: l.type_id == type_ind).mapped('montant'))"
+                                            t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
+                                    </t>
+                                    <td t-else="" style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="doc.indemnite_total"
                                               t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
                                     <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="doc.autres_frais"
                                               t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
@@ -151,7 +182,7 @@
                         <ul t-if="frais_retenus" class="fst-italic">
                             <li t-foreach="frais_retenus" t-as="frais">
                                 <t t-if="len(doc.membre_ids) > 1 and frais.membre_id">
-                                    <t t-out="frais.membre_id.employee_id.name"/> — </t>
+                                    <t t-out="frais.membre_id.nom_affiche"/> — </t>
                                 <span t-field="frais.description"/> :
                                 <span t-field="frais.montant"
                                       t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/>

@@ -61,6 +61,10 @@
                                  help="Un supérieur hiérarchique crée une demande au nom d'un collaborateur direct depuis le portail : brouillon que l'agent complète et soumet, ou soumission directe. La RH peut toujours créer depuis le backend, quel que soit le réglage.">
                             <field name="gm_portal_chef_can_create"/>
                         </setting>
+                        <setting string="Chaque missionnaire ne tire que sa propre ligne"
+                                 help="Depuis le portail, un simple membre télécharge un « décompte individuel » ne portant que ses montants. Le chef de mission et les valideurs continuent de recevoir la fiche complète : ils répondent du dossier et statuent sur le total du groupe. Décoché, tout membre voit la fiche complète.">
+                            <field name="gm_decompte_individuel"/>
+                        </setting>
                     </block>
                 </app>
             </xpath>

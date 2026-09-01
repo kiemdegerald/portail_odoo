@@ -702,6 +702,25 @@ class PortailMission(PortailCommon):
                      "Fiche de decompte"),
     }
 
+    def _membre_du_decompte(self, mission, employees):
+        """La ligne à laquelle limiter le décompte, ou None pour la fiche
+        complète.
+
+        None dans trois cas : le réglage est décoché, l'utilisateur est le
+        chef de mission, ou il est valideur du circuit.
+        """
+        actif = request.env["ir.config_parameter"].sudo().get_param(
+            "gm.decompte_individuel", "0") == "1"
+        if not actif:
+            return None
+        if mission.employee_id in employees:
+            return None
+        if mission.validation_line_ids.filtered(
+                lambda l: l.validator_id in employees):
+            return None
+        return mission.membre_ids.filtered(
+            lambda m: m.employee_id in employees)[:1] or None
+
     @http.route(["/my/missions/<int:mission_id>/document/<string:doc>"],
                 type="http", auth="user", website=True)
     def portal_my_mission_document(self, mission_id=None, doc=None, **kw):
@@ -727,8 +746,16 @@ class PortailMission(PortailCommon):
             return request.redirect("/my/missions")
 
         report_ref, label = self.PM_DOCUMENTS[doc]
-        pdf, _kind = request.env["ir.actions.report"].sudo()._render_qweb_pdf(
-            report_ref, [mission.id])
+        rendu = request.env["ir.actions.report"].sudo()
+        # Décompte individuel : réglage de la banque. Le chef de mission et
+        # les valideurs gardent la fiche complète — le premier répond du
+        # dossier, les seconds statuent sur le total du groupe. Seul un
+        # SIMPLE membre est ramené à sa propre ligne.
+        membre = self._membre_du_decompte(mission, employees)             if doc == "decompte" else None
+        if membre:
+            rendu = rendu.with_context(gm_decompte_membre_id=membre.id)
+            label = "Decompte individuel"
+        pdf, _kind = rendu._render_qweb_pdf(report_ref, [mission.id])
         filename = "%s %s.pdf" % (label, (mission.name or "").replace("/", "-"))
         disposition = "inline" if kw.get("inline") == "1" else "attachment"
         return request.make_response(pdf, headers=[

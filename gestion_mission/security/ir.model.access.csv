@@ -14,3 +14,9 @@ access_gm_mission_frais_user,gm.mission.frais.user,model_gm_mission_frais,group_
 access_gm_mission_frais_manager,gm.mission.frais.manager,model_gm_mission_frais,group_gm_manager,1,1,1,1
 access_gm_mission_membre_user,gm.mission.membre.user,model_gm_mission_membre,group_gm_user,1,1,1,1
 access_gm_mission_membre_manager,gm.mission.membre.manager,model_gm_mission_membre,group_gm_manager,1,1,1,1
+access_gm_indemnite_type_user,gm.indemnite.type.user,model_gm_indemnite_type,group_gm_user,1,0,0,0
+access_gm_indemnite_type_manager,gm.indemnite.type.manager,model_gm_indemnite_type,group_gm_manager,1,1,1,1
+access_gm_mission_indemnite_user,gm.mission.indemnite.user,model_gm_mission_indemnite,group_gm_user,1,0,0,0
+access_gm_mission_indemnite_manager,gm.mission.indemnite.manager,model_gm_mission_indemnite,group_gm_manager,1,1,1,1
+access_gm_chauffeur_user,gm.chauffeur.user,model_gm_chauffeur,group_gm_user,1,0,0,0
+access_gm_chauffeur_manager,gm.chauffeur.manager,model_gm_chauffeur,group_gm_manager,1,1,1,1

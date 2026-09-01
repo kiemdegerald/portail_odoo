@@ -35,7 +35,11 @@ class GmMissionFrais(models.Model):
     montant = fields.Monetary(
         string="Montant", required=True, currency_field="currency_id")
     currency_id = fields.Many2one(
-        related="mission_id.currency_id")
+        # STOCKÉE : au moment d'écrire un champ monétaire, Odoo relit
+        # sa devise. Non stockée, elle était relue sur la mission —
+        # déjà effacée pendant une suppression en cascade, d'où
+        # « Enregistrement inexistant ou supprimé ».
+        related="mission_id.currency_id", store=True)
     justificatif = fields.Binary(
         string="Justificatif", attachment=True,
         help="Facture, reçu, billet... Exigé sur les frais réels pour "
@@ -63,8 +67,12 @@ class GmMissionFrais(models.Model):
     # ------------------------------------------------------------------
     def _check_line_locked(self, lines_data):
         """lines_data : liste de tuples (mission, type_frais)."""
+        # gm_suppression_mission : c'est la mission ENTIÈRE qui est
+        # supprimée ; ses lignes partent avec elle, quel que soit son
+        # état. Le droit de supprimer la mission a déjà été vérifié.
         if (self.env.context.get("gm_migration")
-                or self.env.context.get("gm_recompute")):
+                or self.env.context.get("gm_recompute")
+                or self.env.context.get("gm_suppression_mission")):
             return
         for mission, type_frais in lines_data:
             if mission.state in ("closed", "cancelled"):

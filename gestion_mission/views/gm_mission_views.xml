@@ -81,6 +81,9 @@
                             <field name="destination" readonly="state != 'draft'"/>
                             <field name="zone_id" readonly="state != 'draft'" options="{'no_create': True}"/>
                             <field name="transport" readonly="state != 'draft'"/>
+                            <field name="immatriculation"
+                                   readonly="state != 'draft'"
+                                   placeholder="BF 1666 E3 03"/>
                         </group>
                     </group>
                     <group>
@@ -155,8 +158,13 @@
                                 <tree editable="bottom">
                                     <field name="sequence" widget="handle"/>
                                     <field name="employee_id"
+                                           readonly="chauffeur_id"
                                            options="{'no_create': True}"/>
+                                    <field name="chauffeur_id"
+                                           readonly="employee_id"
+                                           options="{'no_create_edit': True}"/>
                                     <field name="job_title"/>
+                                    <field name="compte_bancaire" optional="hide"/>
                                     <field name="is_chef" string="Chef de mission"/>
                                     <field name="categorie_agent"
                                            column_invisible="parent.state == 'draft'"/>
@@ -173,6 +181,36 @@
                                     <field name="currency_id" column_invisible="1"/>
                                 </tree>
                             </field>
+                        </page>
+                        <!-- Le detail poste par poste : d'ou vient
+                             l'indemnite de chaque missionnaire. -->
+                        <page string="Indemnités" name="indemnites">
+                            <field name="indemnite_ids"
+                                   readonly="state != 'draft' or avance_versee">
+                                <tree string="Détail des indemnités" editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="membre_id"
+                                           options="{'no_create': True}"
+                                           domain="[('mission_id', '=', parent.id)]"/>
+                                    <field name="type_id"
+                                           options="{'no_create_edit': True}"/>
+                                    <field name="jours"/>
+                                    <field name="montant_jour"/>
+                                    <field name="montant" sum="Total"/>
+                                    <field name="currency_id" column_invisible="1"/>
+                                </tree>
+                            </field>
+                            <div class="text-muted mt-2">
+                                Les indemnités des <strong>agents</strong> sont
+                                calculées à la soumission depuis le barème
+                                (zone × catégorie × type) : inutile de les
+                                saisir, elles seront recalculées.
+                                <br/>
+                                Celles d'un <strong>chauffeur</strong> se
+                                saisissent ici, à la main : il n'a pas de
+                                classification, donc pas de barème. Elles sont
+                                conservées telles quelles.
+                            </div>
                         </page>
                         <page string="Frais prévus" name="frais">
                             <field name="frais_prevus_ids"

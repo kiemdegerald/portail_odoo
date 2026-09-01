@@ -48,6 +48,15 @@
             <field name="sequence">30</field>
         </record>
 
+        <!-- Type d'indemnité par défaut : tout dans un seul poste. La
+             banque découpe quand elle le décide (Missions > Configuration
+             > Types d'indemnité) ; tant qu'elle ne le fait pas, le
+             fonctionnement est celui d'origine. -->
+        <record id="indemnite_type_journaliere" model="gm.indemnite.type">
+            <field name="name">Perdiems</field>
+            <field name="sequence">10</field>
+        </record>
+
         <!-- Barème par défaut (montants PROVISOIRES calés sur l'ordre de
              mission réel N°050/2026 : ~160 000 F/j en UEMOA pour un cadre
              supérieur). Les RH fixent les vrais montants dans
@@ -55,46 +64,55 @@
         <record id="rate_nat_exec" model="gm.perdiem.rate">
             <field name="zone_id" ref="zone_national"/>
             <field name="categorie">Agent d'execution</field>
+            <field name="type_id" ref="indemnite_type_journaliere"/>
             <field name="montant_jour">40000</field>
         </record>
         <record id="rate_nat_moyen" model="gm.perdiem.rate">
             <field name="zone_id" ref="zone_national"/>
             <field name="categorie">Cadre moyen</field>
+            <field name="type_id" ref="indemnite_type_journaliere"/>
             <field name="montant_jour">60000</field>
         </record>
         <record id="rate_nat_sup" model="gm.perdiem.rate">
             <field name="zone_id" ref="zone_national"/>
             <field name="categorie">Cadre supérieur</field>
+            <field name="type_id" ref="indemnite_type_journaliere"/>
             <field name="montant_jour">80000</field>
         </record>
         <record id="rate_uemoa_exec" model="gm.perdiem.rate">
             <field name="zone_id" ref="zone_uemoa"/>
             <field name="categorie">Agent d'execution</field>
+            <field name="type_id" ref="indemnite_type_journaliere"/>
             <field name="montant_jour">80000</field>
         </record>
         <record id="rate_uemoa_moyen" model="gm.perdiem.rate">
             <field name="zone_id" ref="zone_uemoa"/>
             <field name="categorie">Cadre moyen</field>
+            <field name="type_id" ref="indemnite_type_journaliere"/>
             <field name="montant_jour">120000</field>
         </record>
         <record id="rate_uemoa_sup" model="gm.perdiem.rate">
             <field name="zone_id" ref="zone_uemoa"/>
             <field name="categorie">Cadre supérieur</field>
+            <field name="type_id" ref="indemnite_type_journaliere"/>
             <field name="montant_jour">160000</field>
         </record>
         <record id="rate_int_exec" model="gm.perdiem.rate">
             <field name="zone_id" ref="zone_international"/>
             <field name="categorie">Agent d'execution</field>
+            <field name="type_id" ref="indemnite_type_journaliere"/>
             <field name="montant_jour">120000</field>
         </record>
         <record id="rate_int_moyen" model="gm.perdiem.rate">
             <field name="zone_id" ref="zone_international"/>
             <field name="categorie">Cadre moyen</field>
+            <field name="type_id" ref="indemnite_type_journaliere"/>
             <field name="montant_jour">180000</field>
         </record>
         <record id="rate_int_sup" model="gm.perdiem.rate">
             <field name="zone_id" ref="zone_international"/>
             <field name="categorie">Cadre supérieur</field>
+            <field name="type_id" ref="indemnite_type_journaliere"/>
             <field name="montant_jour">240000</field>
         </record>
     </data>

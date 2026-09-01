@@ -44,13 +44,47 @@ class GmMissionZone(models.Model):
     ]
 
 
+class GmIndemniteType(models.Model):
+    """Les postes qui composent l'indemnité de mission : restauration,
+    hébergement, transport... La banque définit sa propre liste.
+
+    Elle peut n'en créer qu'UN, dans lequel elle met tout : on retombe
+    alors exactement sur le fonctionnement d'origine, une indemnité
+    journalière unique. C'est ce qui rend ce découpage sans risque —
+    c'est la banque qui décide si elle découpe, et jusqu'où.
+    """
+    _name = "gm.indemnite.type"
+    _description = "Type d'indemnité de mission"
+    _order = "sequence, id"
+
+    name = fields.Char(string="Type d'indemnité", required=True)
+    sequence = fields.Integer(
+        string="Ordre", default=10,
+        help="Ordre d'affichage, et ordre des colonnes sur la fiche de "
+             "décompte.")
+    company_id = fields.Many2one(
+        "res.company", string="Société",
+        help="Vide = commun à toutes les sociétés.")
+    active = fields.Boolean(default=True)
+
+    _sql_constraints = [
+        ("name_company_uniq", "unique(name, company_id)",
+         "Ce type d'indemnité existe déjà."),
+    ]
+
+
 class GmPerdiemRate(models.Model):
     """Barème des indemnités journalières : zone de mission × catégorie
-    d'agent -> montant par jour. Configurable par les RH (Missions >
-    Configuration > Barème des indemnités)."""
+    d'agent × TYPE d'indemnité -> montant par jour. Configurable par les
+    RH (Missions > Configuration > Barème des indemnités).
+
+    Une ligne par croisement : « un cadre moyen en mission nationale
+    touche tant de restauration et tant d'hébergement, par jour ». Pas de
+    ligne, pas de droit.
+    """
     _name = "gm.perdiem.rate"
     _description = "Barème d'indemnité journalière de mission"
-    _order = "zone_id, categorie"
+    _order = "zone_id, categorie, type_id"
 
     zone_id = fields.Many2one(
         "gm.mission.zone", string="Zone", required=True,
@@ -60,6 +94,12 @@ class GmPerdiemRate(models.Model):
         string="Catégorie d'agent", required=True,
         help="Catégorie issue de la grille salariale (classification de "
              "l'employé).")
+    type_id = fields.Many2one(
+        "gm.indemnite.type", string="Type d'indemnité",
+        ondelete="restrict", index=True,
+        help="Poste d'indemnité concerné. Une ligne par poste : c'est ce "
+             "qui permet de dire séparément la restauration et "
+             "l'hébergement.")
     montant_jour = fields.Monetary(
         string="Indemnité / jour", required=True,
         currency_field="currency_id")
@@ -72,9 +112,10 @@ class GmPerdiemRate(models.Model):
     active = fields.Boolean(default=True)
 
     _sql_constraints = [
-        ("zoneid_categorie_company_uniq",
-         "unique(zone_id, categorie, company_id)",
-         "Un barème existe déjà pour cette zone et cette catégorie."),
+        ("zoneid_categorie_type_company_uniq",
+         "unique(zone_id, categorie, type_id, company_id)",
+         "Un barème existe déjà pour cette zone, cette catégorie et ce "
+         "type d'indemnité."),
     ]
 
     @api.constrains("montant_jour")
@@ -85,11 +126,19 @@ class GmPerdiemRate(models.Model):
                     "Le montant journalier doit être positif."))
 
     @api.model
-    def get_rate(self, zone, categorie, company):
-        """Barème applicable : celui de la société, sinon le commun."""
-        rate = self.search([
+    def get_rates(self, zone, categorie, company):
+        """TOUTES les lignes de barème applicables : une par type.
+
+        Une ligne propre à la société l'emporte sur la ligne commune du
+        même type — la règle d'origine, appliquée type par type.
+        """
+        lignes = self.search([
             ("zone_id", "=", zone.id),
             ("categorie", "=", categorie),
             ("company_id", "in", [company.id, False]),
-        ], order="company_id desc", limit=1)
-        return rate
+        ], order="company_id desc")
+        retenues = {}
+        for ligne in lignes:
+            retenues.setdefault(ligne.type_id.id, ligne)
+        return self.browse([l.id for l in retenues.values()]).sorted(
+            lambda l: (l.type_id.sequence, l.type_id.id))

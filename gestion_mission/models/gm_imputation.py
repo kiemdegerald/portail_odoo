@@ -78,16 +78,16 @@ class GmMission(models.Model):
             sens = 1.0 if montant > 0 else -1.0
             charge_net += membre.indemnite_total * ratio * sens
             justifier_net += membre.autres_frais * ratio * sens
-            code_agence, compte = self._split_compte(
-                membre.employee_id.sudo().bank_account_id.acc_number)
+            code_agence, compte = self._split_compte(membre.compte_bancaire)
             if not compte:
                 raise UserError(_(
-                    "Aucun compte bancaire n'est renseigné sur la fiche de "
-                    "%s : impossible de l'imputer. Complétez la fiche "
-                    "employé.", membre.employee_id.name))
+                    "Aucun compte bancaire n'est connu pour %s : impossible "
+                    "de l'imputer. Complétez sa fiche employé, ou sa fiche "
+                    "dans le répertoire des chauffeurs.",
+                    membre.nom_affiche or ""))
             valeur = devise.round(abs(montant))
             lignes_membres.append((
-                code_agence, compte, membre.employee_id.name.upper(),
+                code_agence, compte, (membre.nom_affiche or "").upper(),
                 valeur if montant < 0 else 0.0,      # trop-perçu : débit
                 valeur if montant > 0 else 0.0))     # décaissement : crédit
 

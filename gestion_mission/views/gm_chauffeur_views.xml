@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_gm_chauffeur_tree" model="ir.ui.view">
+        <field name="name">gm.chauffeur.tree</field>
+        <field name="model">gm.chauffeur</field>
+        <field name="arch" type="xml">
+            <tree string="Chauffeurs de mission" editable="bottom">
+                <field name="name"/>
+                <field name="fonction"/>
+                <field name="employee_id" options="{'no_create': True}"/>
+                <field name="numero_compte"
+                       readonly="employee_id"
+                       placeholder="Inutile si une fiche employé est rattachée"/>
+                <field name="compte_effectif" optional="show"/>
+                <field name="telephone" optional="hide"/>
+                <field name="company_id" groups="base.group_multi_company"
+                       options="{'no_create': True}"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_gm_chauffeur_form" model="ir.ui.view">
+        <field name="name">gm.chauffeur.form</field>
+        <field name="model">gm.chauffeur</field>
+        <field name="arch" type="xml">
+            <form string="Chauffeur de mission">
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1><field name="name" placeholder="Nom et prénom"/></h1>
+                    </div>
+                    <group>
+                        <group string="Identité">
+                            <field name="fonction"/>
+                            <field name="telephone"/>
+                            <field name="company_id"
+                                   groups="base.group_multi_company"
+                                   options="{'no_create': True}"/>
+                            <field name="active" widget="boolean_toggle"/>
+                        </group>
+                        <group string="Où virer ses indemnités">
+                            <field name="employee_id"
+                                   options="{'no_create': True}"/>
+                            <field name="numero_compte"
+                                   readonly="employee_id"/>
+                            <field name="compte_effectif" readonly="1"/>
+                            <div colspan="2" class="text-muted">
+                                Si le chauffeur est salarié de la banque,
+                                rattachez sa fiche employé : son compte en
+                                sera lu, et il ne pourra pas diverger le jour
+                                où la paie le met à jour. Sinon, saisissez le
+                                compte ici.
+                            </div>
+                        </group>
+                    </group>
+                    <group string="Notes">
+                        <field name="note" nolabel="1"
+                               placeholder="Permis, véhicule habituel, disponibilités..."/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_gm_chauffeur" model="ir.actions.act_window">
+        <field name="name">Chauffeurs de mission</field>
+        <field name="res_model">gm.chauffeur</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Enregistrez vos chauffeurs de mission
+            </p>
+            <p>
+                Un chauffeur accompagne la mission, figure sur l'ordre de
+                mission et reçoit des indemnités. Enregistrez-le une fois
+                ici avec son compte : vous le choisirez ensuite dans les
+                missions sans rien ressaisir.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_gm_chauffeur" name="Chauffeurs de mission"
+              parent="menu_gm_config"
+              action="action_gm_chauffeur" sequence="25"
+              groups="gestion_mission.group_gm_manager"/>
+
+</odoo>
