@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Tous les fichiers déposés par les agents, en un seul endroit.
+
+         Deux pièges d'Odoo sont traités ici :
+         1. un champ binaire `attachment=True` produit bien une pièce
+            jointe, mais Odoo l'EXCLUT par défaut de toute recherche tant
+            que le domaine ne mentionne pas `res_field` — d'où le
+            « ('res_field', '=', False) OU ('res_field', '!=', False) »,
+            qui ne filtre rien mais lève l'exclusion ;
+         2. Odoo nomme ces pièces d'après le champ (« justificatif ») :
+            le vrai nom du fichier et l'enregistrement d'origine sont
+            rétablis par les champs calculés `gm_*`.
+
+         La liste s'adapte aux droits : Odoo retire d'office les pièces
+         rattachées à un dossier que l'utilisateur n'a pas le droit de
+         lire. Un responsable RH sans accès aux missions ne verra donc
+         que les documents d'évaluation et de recrutement. -->
+    <record id="view_gm_documents_tree" model="ir.ui.view">
+        <field name="name">gm.documents.tree</field>
+        <field name="model">ir.attachment</field>
+        <field name="arch" type="xml">
+            <tree string="Documents déposés" create="false" edit="false">
+                <field name="create_date" string="Déposé le"/>
+                <field name="create_uid" string="Déposé par"/>
+                <field name="gm_nom_fichier" string="Fichier"/>
+                <field name="gm_origine" string="Provenance"/>
+                <field name="gm_rattachement" string="Rattaché à"/>
+                <field name="file_size" string="Taille" optional="show"/>
+                <field name="mimetype" string="Type" optional="hide"/>
+                <field name="res_model" string="Modèle" optional="hide"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_gm_documents_form" model="ir.ui.view">
+        <field name="name">gm.documents.form</field>
+        <field name="model">ir.attachment</field>
+        <field name="arch" type="xml">
+            <form string="Document déposé" create="false" edit="false">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="gm_nom_fichier" string="Fichier"/>
+                            <field name="gm_origine" string="Provenance"/>
+                            <field name="gm_rattachement" string="Rattaché à"/>
+                        </group>
+                        <group>
+                            <field name="create_uid" string="Déposé par"/>
+                            <field name="create_date" string="Déposé le"/>
+                            <field name="file_size" string="Taille"/>
+                            <field name="mimetype" string="Type"/>
+                        </group>
+                    </group>
+                    <group string="Télécharger">
+                        <field name="datas" filename="gm_nom_fichier"
+                               nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_gm_documents_search" model="ir.ui.view">
+        <field name="name">gm.documents.search</field>
+        <field name="model">ir.attachment</field>
+        <field name="arch" type="xml">
+            <search string="Documents déposés">
+                <field name="name" string="Fichier"/>
+                <field name="create_uid" string="Déposé par"/>
+                <filter name="filtre_missions" string="Missions"
+                        domain="[('res_model', 'in', ['gm.mission', 'gm.mission.indemnite', 'gm.mission.frais'])]"/>
+                <filter name="filtre_evaluations" string="Évaluations"
+                        domain="[('res_model', '=', 'hr.appraisal')]"/>
+                <filter name="filtre_recrutement" string="Recrutement"
+                        domain="[('res_model', '=', 'hr.applicant')]"/>
+                <separator/>
+                <filter name="filtre_mois" string="Ce mois-ci"
+                        domain="[('create_date', '&gt;=', (context_today() + relativedelta(day=1)).strftime('%Y-%m-%d'))]"/>
+                <group expand="0" string="Regrouper par">
+                    <filter name="grp_modele" string="Provenance"
+                            context="{'group_by': 'res_model'}"/>
+                    <filter name="grp_auteur" string="Déposé par"
+                            context="{'group_by': 'create_uid'}"/>
+                    <filter name="grp_date" string="Date de dépôt"
+                            context="{'group_by': 'create_date:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_gm_documents" model="ir.actions.act_window">
+        <field name="name">Documents déposés</field>
+        <field name="res_model">ir.attachment</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_gm_documents_search"/>
+        <field name="domain">[('res_model', 'in', ['gm.mission', 'gm.mission.indemnite', 'gm.mission.frais', 'hr.appraisal', 'hr.applicant']), '|', ('res_field', '=', False), ('res_field', '!=', False)]</field>
+        <field name="context">{'search_default_grp_modele': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Aucun document déposé pour l'instant
+            </p>
+            <p>
+                Tout ce que les agents téléversent : justificatifs
+                d'indemnités et de frais de mission, visas de départ et de
+                retour, comptes-rendus
+                d'entretien d'évaluation, dossiers de candidature.
+                Ouvrez une ligne pour télécharger le fichier.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_gm_documents_tree" model="ir.actions.act_window.view">
+        <field name="sequence" eval="1"/>
+        <field name="view_mode">tree</field>
+        <field name="view_id" ref="view_gm_documents_tree"/>
+        <field name="act_window_id" ref="action_gm_documents"/>
+    </record>
+
+    <record id="action_gm_documents_form" model="ir.actions.act_window.view">
+        <field name="sequence" eval="2"/>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="view_gm_documents_form"/>
+        <field name="act_window_id" ref="action_gm_documents"/>
+    </record>
+
+    <menuitem id="menu_gm_documents" name="Documents déposés"
+              parent="hr.menu_hr_root" action="action_gm_documents"
+              sequence="96"
+              groups="hr.group_hr_manager,gestion_mission.group_gm_manager"/>
+
+    <!-- MASQUÉ à la demande de l'utilisateur : la fonction est en place
+         et testée, on l'affichera au moment voulu. Pour la rendre
+         visible, remplacer `False` par `True` ci-dessous (ou cocher
+         « Actif » sur le menu depuis Paramètres > Technique > Menus). -->
+    <record id="menu_gm_documents" model="ir.ui.menu">
+        <field name="active" eval="False"/>
+    </record>
+
+</odoo>

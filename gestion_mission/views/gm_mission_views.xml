@@ -94,10 +94,21 @@
                         </group>
                         <group string="Retour de mission"
                                invisible="state not in ('validated', 'returned', 'closed')">
+                            <field name="visa_exige" invisible="1"/>
                             <field name="date_depart_reelle"
                                    readonly="state in ('closed',) or (state == 'returned' and not is_gm_manager)"/>
+                            <field name="visa_depart" widget="binary"
+                                   filename="visa_depart_filename"
+                                   invisible="not visa_exige"
+                                   readonly="state in ('closed',) or (state == 'returned' and not is_gm_manager)"/>
+                            <field name="visa_depart_filename" invisible="1"/>
                             <field name="date_retour_reelle"
                                    readonly="state in ('closed',) or (state == 'returned' and not is_gm_manager)"/>
+                            <field name="visa_retour" widget="binary"
+                                   filename="visa_retour_filename"
+                                   invisible="not visa_exige"
+                                   readonly="state in ('closed',) or (state == 'returned' and not is_gm_manager)"/>
+                            <field name="visa_retour_filename" invisible="1"/>
                             <field name="duration_reelle"
                                    invisible="not duration_reelle"/>
                             <field name="retour_commentaire"
@@ -197,6 +208,10 @@
                                     <field name="jours"/>
                                     <field name="montant_jour"/>
                                     <field name="montant" sum="Total"/>
+                                    <field name="a_justifier" widget="boolean_toggle"/>
+                                    <field name="justificatif_filename" column_invisible="1"/>
+                                    <field name="justificatif" widget="binary"
+                                           filename="justificatif_filename"/>
                                     <field name="currency_id" column_invisible="1"/>
                                 </tree>
                             </field>

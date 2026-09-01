@@ -101,6 +101,26 @@ class GmMission(models.Model):
         string="Commentaire de retour", copy=False,
         help="Précisions du missionnaire sur le déroulement (retour "
              "anticipé, prolongation, incidents...).")
+    # --- Visas de départ et de retour ---------------------------------
+    # Le document visé sur place PROUVE que la mission a bien été
+    # effectuée aux dates déclarées. L'exigence est photographiée à la
+    # soumission : l'activer ensuite n'impose rien aux missions déjà
+    # parties, dont personne n'aurait pu faire viser les pièces.
+    visa_exige = fields.Boolean(
+        string="Visas exigés", readonly=True, copy=False,
+        help="Réglage RH photographié à la soumission de cette mission.")
+    visa_depart = fields.Binary(
+        string="Visa de départ", attachment=True, copy=False,
+        help="Document visé au départ / à l'arrivée sur place, portant la "
+             "date réelle de départ.")
+    visa_depart_filename = fields.Char(
+        string="Nom du visa de départ", copy=False)
+    visa_retour = fields.Binary(
+        string="Visa de retour", attachment=True, copy=False,
+        help="Document visé au retour, portant la date réelle de retour.")
+    visa_retour_filename = fields.Char(
+        string="Nom du visa de retour", copy=False)
+
     retour_declare_par_id = fields.Many2one(
         "res.users", string="Retour déclaré par", readonly=True, copy=False)
     retour_date_declaration = fields.Datetime(
@@ -730,6 +750,7 @@ class GmMission(models.Model):
             mission._ensure_frais_membre()
             mission._check_dates_at_submit()
             mission._snapshot_indemnites()
+            mission.visa_exige = mission._gm_visa_exige_config()
             lines = mission._create_validation_snapshot()
             mission.state = "submitted"
             mission.message_post(body=_(
@@ -854,8 +875,46 @@ class GmMission(models.Model):
         solde qui absorbe l'écart."""
         self.ensure_one()
         jours = self.duration_reelle or self.duration
-        for membre in self.membre_ids.with_context(gm_recompute=True):
-            membre.indemnite_total = membre.indemnite_jour * jours
+        # On recalcule les LIGNES, pas le total du membre : celui-ci en
+        # découle. Écrire le total directement laissait les lignes sur
+        # l'ancienne durée — la fiche de décompte affichait alors des
+        # colonnes qui ne s'additionnaient plus au total.
+        lignes = self.indemnite_ids.with_context(gm_recompute=True)
+        # Les lignes d'un CHAUFFEUR ont été saisies à la main : aucun
+        # barème ne saurait les refaire, on n'y touche pas.
+        lignes.filtered(lambda l: l.membre_id.employee_id).write(
+            {"jours": jours})
+        # On redemande explicitement le total de CHAQUE membre. Sans cela,
+        # celui d'un chauffeur — dont aucune ligne n'a bougé — restait sur
+        # une valeur périmée, et la fiche affichait un total qui ne
+        # correspondait plus à ses colonnes.
+        self.membre_ids.modified(["indemnite_ids"])
+
+    @api.model
+    def _gm_visa_exige_config(self):
+        """La banque exige-t-elle les visas ? Réglage RH (Paramètres >
+        Missions). Absent = non exigé : on ne durcit jamais une règle
+        dans le dos de l'utilisateur."""
+        return self.env["ir.config_parameter"].sudo().get_param(
+            "gm.visa_exige", "0") == "1"
+
+    def _check_visas(self):
+        """Les deux visas sont-ils déposés ? Uniquement si la mission a
+        été soumise alors que la banque les exigeait."""
+        for mission in self:
+            if not mission.visa_exige:
+                continue
+            manquants = []
+            if not mission.visa_depart:
+                manquants.append(_("le visa de départ"))
+            if not mission.visa_retour:
+                manquants.append(_("le visa de retour"))
+            if manquants:
+                raise UserError(_(
+                    "Le retour ne peut pas être déclaré sans %s. Joignez "
+                    "le ou les documents visés sur place (PDF, photo ou "
+                    "scan) en regard des dates réelles.",
+                    " et ".join(manquants)))
 
     def action_declare_return(self):
         """Validée -> Retour déclaré : le missionnaire (ou la RH) constate
@@ -880,6 +939,8 @@ class GmMission(models.Model):
                     "Le retour réel (%s) est dans le futur : déclarez le "
                     "retour une fois la mission effectuée.",
                     mission.date_retour_reelle.strftime("%d/%m/%Y")))
+            mission._check_visas()
+            mission._check_mes_justificatifs()
             ancien_total = mission.total_du
             mission._prepare_frais_reels()
             mission._recompute_indemnites_reelles()
@@ -910,6 +971,46 @@ class GmMission(models.Model):
                 "Déclaration de retour renvoyée pour correction par %s.",
                 self.env.user.name))
 
+    def _gm_employes_utilisateur(self):
+        """Les fiches employé de l'utilisateur courant.
+
+        Deux rattachements coexistent : « utilisateur associé » (le lien
+        standard) et le contact professionnel (celui que pose le module
+        ``portail``). Les deux doivent fonctionner.
+        """
+        user = self.env.user
+        Employee = self.env["hr.employee"].sudo()
+        domaine = [("user_id", "=", user.id)]
+        if user.partner_id:
+            domaine = ["|"] + domaine + [
+                ("work_contact_id", "=", user.partner_id.id)]
+        return Employee.search(domaine)
+
+    def _check_mes_justificatifs(self):
+        """Celui qui déclare le retour fournit d'abord SES pièces.
+
+        Il ne peut rien exiger des autres — chacun dépose les siennes — mais
+        il n'a aucune raison de déclarer le retour du groupe en laissant les
+        siennes de côté.
+
+        Un gestionnaire RH qui déclare depuis le back-office n'est pas
+        missionnaire : il n'a pas de ligne, donc rien ne le bloque.
+        """
+        self.ensure_one()
+        mes_employes = self._gm_employes_utilisateur()
+        if not mes_employes:
+            return
+        manquantes = self.indemnite_ids.filtered(
+            lambda l: l.a_justifier and not l.justificatif
+            and l.membre_id.employee_id in mes_employes)
+        if not manquantes:
+            return
+        raise UserError(_(
+            "Déposez d'abord VOS justificatifs : %s.\n\n"
+            "Ces indemnités doivent être justifiées. Joignez les pièces "
+            "sur la même page, puis déclarez le retour.",
+            ", ".join(manquantes.mapped("type_id.name"))))
+
     def action_close(self):
         """Retour déclaré -> Clôturée : décompte définitif accepté et
         solde réglé. Plus aucune modification ensuite."""
@@ -918,6 +1019,20 @@ class GmMission(models.Model):
                 raise UserError(_(
                     "Seule une mission dont le retour est déclaré peut "
                     "être clôturée."))
+            # Les indemnités que la RH a marquées « à justifier » : sans
+            # la pièce, la mission ne se clôt pas. On nomme QUI doit quoi —
+            # chacun ne fournit que ses propres preuves depuis le portail.
+            indem_sans_piece = mission.indemnite_ids.filtered(
+                lambda l: l.a_justifier and not l.justificatif)
+            if indem_sans_piece:
+                manquants = ["%s — %s" % (l.membre_id.nom_affiche or "",
+                                          l.type_id.name or "")
+                             for l in indem_sans_piece]
+                raise UserError(_(
+                    "Indemnités à justifier sans pièce jointe :\n%s\n\n"
+                    "Chaque missionnaire dépose ses justificatifs depuis "
+                    "le portail avant que la mission puisse être clôturée.",
+                    "\n".join("• " + m for m in manquants)))
             sans_justif = mission.frais_ids.filtered(
                 lambda f: f.type_frais == "reel" and not f.justificatif)
             if sans_justif:

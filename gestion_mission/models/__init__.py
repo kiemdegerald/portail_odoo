@@ -9,3 +9,4 @@ from . import gm_indemnite
 from . import gm_mission
 from . import gm_imputation
 from . import gm_validation
+from . import ir_attachment

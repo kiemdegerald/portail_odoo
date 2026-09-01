@@ -31,6 +31,19 @@ class GmMissionIndemnite(models.Model):
         "gm.indemnite.type", string="Type d'indemnité", required=True,
         ondelete="restrict")
     sequence = fields.Integer(string="Ordre", default=10)
+    # PHOTOGRAPHIÉ depuis le type, comme le reste : une mission déjà
+    # soumise ne doit pas changer de règle parce que le service RH a
+    # coché la case entre-temps.
+    a_justifier = fields.Boolean(
+        string="À justifier", compute="_compute_a_justifier",
+        store=True, readonly=False,
+        help="Reprend le réglage du type d'indemnité. Modifiable tant que "
+             "la mission est en brouillon.")
+
+    @api.depends("type_id")
+    def _compute_a_justifier(self):
+        for ligne in self:
+            ligne.a_justifier = ligne.type_id.a_justifier
 
     # --- Photo prise à la soumission -----------------------------------
     # Saisissables en brouillon : c'est ainsi qu'on donne une indemnité à
@@ -54,6 +67,14 @@ class GmMissionIndemnite(models.Model):
     def _compute_montant(self):
         for ligne in self:
             ligne.montant = (ligne.jours or 0.0) * (ligne.montant_jour or 0.0)
+    # --- La preuve, quand la RH l'exige --------------------------------
+    justificatif = fields.Binary(
+        string="Justificatif", attachment=True, copy=False,
+        help="Facture, reçu ou toute pièce prouvant la dépense. Exigé au "
+             "retour pour les indemnités marquées « à justifier ».")
+    justificatif_filename = fields.Char(
+        string="Nom du fichier", copy=False)
+
     currency_id = fields.Many2one(
         # STOCKÉE : au moment d'écrire un champ monétaire, Odoo relit
         # sa devise. Non stockée, elle était relue sur la mission —
@@ -61,6 +82,13 @@ class GmMissionIndemnite(models.Model):
         # « Enregistrement inexistant ou supprimé ».
         related="mission_id.currency_id", string="Devise", store=True)
 
-    def name_get(self):
-        return [(l.id, "%s — %s" % (l.membre_id.nom_affiche or "",
-                                    l.type_id.name or "")) for l in self]
+    @api.depends("mission_id.name", "membre_id.nom_affiche", "type_id.name")
+    def _compute_display_name(self):
+        """Libellé lisible de la ligne — Odoo 17 ne lit plus ``name_get``.
+        C'est ce libellé qui identifie le justificatif dans la liste RH
+        des documents déposés."""
+        for ligne in self:
+            morceaux = [ligne.mission_id.name or "",
+                        ligne.membre_id.nom_affiche or "",
+                        ligne.type_id.name or ""]
+            ligne.display_name = " — ".join(m for m in morceaux if m)

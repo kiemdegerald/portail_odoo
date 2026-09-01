@@ -62,6 +62,15 @@ class GmIndemniteType(models.Model):
         string="Ordre", default=10,
         help="Ordre d'affichage, et ordre des colonnes sur la fiche de "
              "décompte.")
+    a_justifier = fields.Boolean(
+        string="À justifier au retour", default=False,
+        help="Cochée, cette indemnité doit être justifiée au retour de "
+             "mission : le missionnaire produit une pièce (facture, reçu). "
+             "Décochée, elle est forfaitaire — l'agent la garde, quoi "
+             "qu'il ait dépensé. "
+             "Le réglage est PHOTOGRAPHIÉ sur chaque mission au moment de "
+             "la soumission : le modifier ensuite ne change rien aux "
+             "missions déjà parties.")
     company_id = fields.Many2one(
         "res.company", string="Société",
         help="Vide = commun à toutes les sociétés.")

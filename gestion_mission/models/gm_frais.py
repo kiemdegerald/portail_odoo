@@ -46,6 +46,19 @@ class GmMissionFrais(models.Model):
              "pouvoir clôturer la mission.")
     justificatif_filename = fields.Char(string="Nom du fichier")
 
+    @api.depends("mission_id.name", "membre_id.nom_affiche", "description")
+    def _compute_display_name(self):
+        """Libellé lisible : c'est lui qui identifie la pièce jointe dans
+        la liste RH des documents déposés (« MIS/... — Employé — péage »)."""
+        for frais in self:
+            morceaux = [frais.mission_id.name or "",
+                        frais.membre_id.nom_affiche or "",
+                        frais.description or dict(
+                            self._fields["type_frais"].selection).get(
+                                frais.type_frais, "")]
+            frais.display_name = " — ".join(m for m in morceaux if m)
+
+
     @api.constrains("montant")
     def _check_montant(self):
         for line in self:

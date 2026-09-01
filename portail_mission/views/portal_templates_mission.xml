@@ -148,11 +148,31 @@
                         <t t-esc="error_message"/>
                     </div>
 
-                    <!-- Retour de mission : réservé au chef de mission -->
+                    <!-- Dépôt des justificatifs : pour un simple membre -->
+                    <div t-if="can_deposer_pieces" class="alert alert-info" role="alert">
+                        <t t-if="mes_pieces_manquantes">
+                            <strong>De retour de mission ?</strong>
+                            Il vous reste <strong t-esc="mes_pieces_manquantes"/>
+                            <t t-esc="'justificatif' if mes_pieces_manquantes == 1 else 'justificatifs'"/>
+                            à déposer. Sans eux, la mission ne peut pas être clôturée.
+                        </t>
+                        <t t-else="">
+                            <strong>Vos justificatifs sont déposés.</strong>
+                            Vous pouvez les remplacer jusqu'à la clôture.
+                        </t>
+                        <div class="mt-2">
+                            <a t-attf-href="/my/missions/#{mission.id}/retour"
+                               class="btn btn-sm btn-primary">
+                                <i class="fa fa-upload"/> Déposer mes justificatifs
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Retour de mission : les dates, réservées au chef -->
                     <div t-if="can_declare_return" class="alert alert-info" role="alert">
-                        <strong>Vous êtes rentré de mission ?</strong>
-                        Déclarez vos dates réelles et vos frais engagés : le décompte
-                        définitif sera calculé.
+                        <strong>De retour de mission ?</strong>
+                        Déclarez vos dates réelles et vos frais.
+                        Le décompte définitif sera recalculé.
                         <div class="mt-2">
                             <a t-attf-href="/my/missions/#{mission.id}/retour"
                                class="btn btn-sm btn-primary">
@@ -270,26 +290,30 @@
                     <div t-if="mission.state in ('returned', 'closed')"
                          t-attf-class="alert alert-#{'success' if mission.state == 'closed' else 'info'}"
                          role="alert">
-                        <t t-if="mission.state == 'closed'"><strong>Mission clôturée.</strong> Décompte définitif arrêté.</t>
-                        <t t-else=""><strong>Retour déclaré.</strong> Le service RH vérifie votre décompte avant le règlement du solde.</t>
+                        <t t-if="mission.state == 'closed'"><strong>Mission clôturée.</strong> Le décompte est définitif.</t>
+                        <t t-else=""><strong>Retour déclaré.</strong> La RH vérifie le décompte avant de régler le solde.</t>
                         <div class="mt-1">
-                            Réalisé du <span t-field="mission.date_depart_reelle"/>
-                            au <span t-field="mission.date_retour_reelle"/>
-                            (<t t-esc="mission.duration_reelle"/> jour(s) contre
-                            <t t-esc="mission.duration"/> prévus).
+                            Mission réalisée du <span t-field="mission.date_depart_reelle"/>
+                            au <span t-field="mission.date_retour_reelle"/> :
+                            <t t-esc="mission.duration_reelle"/>
+                            <t t-esc="'jour' if mission.duration_reelle == 1 else 'jours'"/>
+                            au lieu de <t t-esc="mission.duration"/> prévus.
                         </div>
                         <div class="mt-1">
-                            <t t-if="mission.solde &gt; 0">
-                                Complément à vous verser :
-                                <strong><span t-field="mission.solde"
-                                      t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></strong>
+                            <t t-if="totaux.solde &gt; 0">
+                                <t t-if="totaux_global">Complément global à verser :</t>
+                                <t t-else="">Complément à vous verser :</t>
+                                <strong><span t-out="totaux.solde" t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></strong>
                             </t>
-                            <t t-elif="mission.solde &lt; 0">
-                                Trop-perçu à rembourser :
-                                <strong><span t-field="mission.solde"
-                                      t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></strong>
+                            <t t-elif="totaux.solde &lt; 0">
+                                <!-- Le solde est stocké en négatif : on l'affiche
+                                     en positif, le libellé dit déjà qu'il s'agit
+                                     d'un remboursement. -->
+                                <t t-if="totaux_global">Trop-perçu global à rembourser :</t>
+                                <t t-else="">Votre trop-perçu à rembourser :</t>
+                                <strong><span t-out="-totaux.solde" t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></strong>
                             </t>
-                            <t t-else="">Solde nul : rien à régler.</t>
+                            <t t-else="">Rien à régler.</t>
                             <span t-if="mission.solde_regle"
                                   class="badge rounded-pill text-bg-success ms-1">Réglé</span>
                         </div>
@@ -367,7 +391,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr t-foreach="mission.membre_ids" t-as="membre">
+                                    <tr t-foreach="membres_visibles" t-as="membre">
                                         <td><t t-esc="membre.nom_affiche"/>
                                             <span t-if="membre.is_chef"
                                                   class="badge rounded-pill text-bg-secondary ms-1">Chef</span>
@@ -390,23 +414,30 @@
                             </table>
                         </div>
 
-                        <h5 class="mt-3">Totaux de la mission</h5>
+                        <h5 t-if="totaux == mission" class="mt-3">Totaux de la mission</h5>
+                        <h5 t-else="" class="mt-3">Mes totaux</h5>
                         <table class="table table-sm">
                             <tbody>
                                 <tr>
-                                    <th class="w-25">Indemnité de mission</th>
-                                    <td><span t-field="mission.indemnite_total"
+                                    <th class="w-25">
+                                        <t t-if="totaux == mission">Indemnité de mission</t>
+                                        <t t-else="">Mon indemnité</t>
+                                    </th>
+                                    <td><span t-field="totaux.indemnite_total"
                                               t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></td>
                                 </tr>
+                                <!-- Mêmes bornes que le tableau des membres :
+                                     on ne détaille que les frais des
+                                     missionnaires visibles. -->
                                 <t t-set="frais_retenus"
-                                   t-value="mission.frais_reels_ids if mission.state in ('returned', 'closed') else mission.frais_prevus_ids"/>
+                                   t-value="(mission.frais_reels_ids if mission.state in ('returned', 'closed') else mission.frais_prevus_ids).filtered(lambda f: f.membre_id in membres_visibles)"/>
                                 <tr t-if="frais_retenus">
                                     <th>Autres frais (à justifier)</th>
                                     <td>
                                         <ul class="list-unstyled mb-0">
                                             <li t-foreach="frais_retenus" t-as="frais">
                                                 <t t-if="len(mission.membre_ids) > 1 and frais.membre_id">
-                                                    <t t-esc="frais.membre_id.employee_id.name"/> — </t>
+                                                    <t t-esc="frais.membre_id.nom_affiche"/> — </t>
                                                 <t t-esc="frais.description"/> :
                                                 <span t-field="frais.montant"
                                                       t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/>
@@ -416,13 +447,13 @@
                                 </tr>
                                 <tr>
                                     <th>Total dû</th>
-                                    <td><strong><span t-field="mission.total_du"
+                                    <td><strong><span t-field="totaux.total_du"
                                               t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></strong></td>
                                 </tr>
                                 <tr>
                                     <th>Avance avant départ</th>
                                     <td>
-                                        <span t-field="mission.avance_montant"
+                                        <span t-field="totaux.avance_montant"
                                               t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/>
                                         <span t-if="mission.avance_versee"
                                               class="badge rounded-pill text-bg-success ms-2">Versée</span>
@@ -430,7 +461,7 @@
                                 </tr>
                                 <tr>
                                     <th>Solde au retour</th>
-                                    <td><span t-field="mission.solde"
+                                    <td><span t-field="totaux.solde"
                                               t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></td>
                                 </tr>
                             </tbody>
@@ -608,10 +639,19 @@
             <div class="row mt-3">
                 <div class="col-12 col-lg-8">
                     <h4>Déclarer mon retour — mission <t t-esc="mission.name"/></h4>
-                    <p class="text-muted">
+                    <p t-if="est_chef" class="text-muted">
                         Indiquez les dates réellement effectuées : l'indemnité est
-                        recalculée sur cette base. Déclarez ensuite les frais que vous
-                        avez réellement engagés, justificatifs à l'appui.
+                        recalculée sur cette base, pour toute la mission. Déclarez
+                        ensuite les frais que vous avez réellement engagés,
+                        justificatifs à l'appui. Vos propres justificatifs
+                        d'indemnité sont exigés pour déclarer le retour ; ceux
+                        des autres missionnaires le seront pour clôturer.
+                    </p>
+                    <p t-else="" class="text-muted">
+                        Les dates réelles sont déclarées par le chef de mission, pour
+                        tout le groupe. De votre côté, déposez les justificatifs des
+                        indemnités qui l'exigent : la mission ne pourra pas être
+                        clôturée sans eux.
                     </p>
 
                     <div t-if="error.get('global')" class="alert alert-danger" role="alert">
@@ -625,42 +665,146 @@
                         <div class="alert alert-light" role="alert">
                             <strong>Prévu :</strong> du <span t-field="mission.date_depart"/>
                             au <span t-field="mission.date_retour"/>
-                            (<t t-esc="mission.duration"/> jour(s))
+                            (<t t-esc="mission.duration"/>
+                            <t t-esc="'jour' if mission.duration == 1 else 'jours'"/>)
                         </div>
 
-                        <div class="row">
+                        <!-- Mes indemnités, et les pièces que la banque exige.
+                             Chacun ne voit que SES lignes. -->
+                        <t t-if="mes_lignes">
+                            <label class="form-label">Mes indemnités</label>
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr class="active">
+                                        <th>Type</th>
+                                        <th class="text-end">Montant reçu</th>
+                                        <th>Justificatif</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr t-foreach="mes_lignes" t-as="ligne">
+                                        <td>
+                                            <t t-esc="ligne.type_id.name"/>
+                                            <span t-if="ligne.a_justifier"
+                                                  class="badge text-bg-warning ms-1">à justifier</span>
+                                        </td>
+                                        <td class="text-end">
+                                            <span t-field="ligne.montant"
+                                                  t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/>
+                                        </td>
+                                        <td>
+                                            <t t-if="not ligne.a_justifier">
+                                                <span class="text-muted small">Forfaitaire — rien à fournir</span>
+                                            </t>
+                                            <t t-else="">
+                                                <div t-if="ligne.justificatif" class="text-success small mb-1">
+                                                    <i class="fa fa-paperclip"/>
+                                                    <t t-esc="ligne.justificatif_filename"/>
+                                                    — un nouveau fichier le remplace
+                                                </div>
+                                                <input type="file"
+                                                       t-attf-name="indem_justif_#{ligne.id}"
+                                                       class="form-control form-control-sm"
+                                                       accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"/>
+                                            </t>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <div t-if="error.get('justificatifs')" class="text-danger small mb-2">
+                                <t t-esc="error['justificatifs']"/>
+                            </div>
+                        </t>
+
+                        <div t-if="est_chef" class="row">
                             <div class="col-md-6 mb-3">
                                 <label class="form-label" for="gm_dep_reel">Date de départ réelle *</label>
                                 <input type="date" name="date_depart_reelle" id="gm_dep_reel"
                                        class="form-control" required="required"
                                        t-att-value="form_values['date_depart_reelle']"/>
+                                <!-- Le document visé sur place : exigé
+                                     seulement si la banque l'a demandé au
+                                     moment où la mission est partie. -->
+                                <t t-if="mission.visa_exige">
+                                    <label class="form-label mt-2 small" for="gm_visa_dep">
+                                        Visa de départ *
+                                    </label>
+                                    <div t-if="form_values['visa_depart']"
+                                         class="small text-success mb-1">
+                                        <i class="fa fa-check"/>
+                                        <t t-esc="form_values['visa_depart']"/>
+                                        — déposé. Choisir un fichier le remplace.
+                                    </div>
+                                    <input type="file" name="visa_depart" id="gm_visa_dep"
+                                           class="form-control form-control-sm"
+                                           accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"/>
+                                    <small class="text-muted">
+                                        Document visé à l'arrivée, portant la date réelle
+                                        de départ (PDF, photo ou scan).
+                                    </small>
+                                </t>
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label" for="gm_ret_reel">Date de retour réelle *</label>
                                 <input type="date" name="date_retour_reelle" id="gm_ret_reel"
                                        class="form-control" required="required"
                                        t-att-value="form_values['date_retour_reelle']"/>
+                                <t t-if="mission.visa_exige">
+                                    <label class="form-label mt-2 small" for="gm_visa_ret">
+                                        Visa de retour *
+                                    </label>
+                                    <div t-if="form_values['visa_retour']"
+                                         class="small text-success mb-1">
+                                        <i class="fa fa-check"/>
+                                        <t t-esc="form_values['visa_retour']"/>
+                                        — déposé. Choisir un fichier le remplace.
+                                    </div>
+                                    <input type="file" name="visa_retour" id="gm_visa_ret"
+                                           class="form-control form-control-sm"
+                                           accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"/>
+                                    <small class="text-muted">
+                                        Document visé au retour, portant la date réelle
+                                        de retour (PDF, photo ou scan).
+                                    </small>
+                                </t>
+                            </div>
+                            <div t-if="error.get('visas')" class="col-12">
+                                <div class="text-danger small mb-2">
+                                    <t t-esc="error['visas']"/>
+                                </div>
                             </div>
                         </div>
 
-                        <div class="mb-3">
+                        <div t-if="est_chef" class="mb-3">
                             <label class="form-label" for="gm_ret_com">Commentaire</label>
                             <textarea name="retour_commentaire" id="gm_ret_com" class="form-control"
                                       rows="2"
                                       placeholder="Retour anticipé, prolongation, incidents..."><t t-esc="form_values['retour_commentaire']"/></textarea>
                         </div>
 
-                        <label class="form-label">Frais réellement engagés</label>
+                        <!-- Les frais RÉELS ne s'écrivent qu'une fois le
+                             retour déclaré : avant, il n'y a pas encore de
+                             décompte définitif à corriger. -->
+                        <div t-if="not est_chef and mission.state != 'returned'"
+                             class="alert alert-secondary" role="alert">
+                            <strong>Vos frais, un peu plus tard.</strong>
+                            Vous les déclarerez dès que le chef de mission aura
+                            déclaré le retour. Pour l'instant, déposez vos
+                            justificatifs.
+                        </div>
+                        <t t-if="est_chef or mission.state == 'returned'">
+                        <label class="form-label">Mes frais réellement engagés</label>
                         <p class="text-muted small mb-1">
-                            Pré-remplis avec ce qui était prévu : corrigez les montants
-                            réels et joignez le justificatif de chaque ligne (PDF, photo
-                            ou scan). Les justificatifs sont exigés pour clôturer.
+                            Corrigez les montants réels, ajoutez ce que vous avez
+                            avancé en cours de mission, et joignez le justificatif de
+                            chaque ligne (PDF, photo ou scan). Vous ne déclarez que
+                            VOS frais.
                         </p>
                         <table class="table table-sm align-middle">
                             <thead>
                                 <tr class="active">
                                     <th>Description</th>
-                                    <th t-if="len(mission.membre_ids) &gt; 1" style="width: 14rem;">Missionnaire</th>
+
                                     <th style="width: 10rem;">Montant</th>
                                     <th style="width: 16rem;">Justificatif</th>
                                     <th style="width: 3rem;"/>
@@ -670,16 +814,6 @@
                                 <tr t-foreach="form_values['frais']" t-as="fr">
                                     <td><input type="text" name="reel_description" class="form-control"
                                                t-att-value="fr['description']"/></td>
-                                    <td t-if="len(mission.membre_ids) &gt; 1">
-                                        <select name="reel_membre" class="form-select">
-                                            <option value="">Chef de mission</option>
-                                            <option t-foreach="mission.membre_ids" t-as="mb"
-                                                    t-att-value="mb.employee_id.id"
-                                                    t-att-selected="'selected' if str(mb.employee_id.id) == str(fr.get('employee_id') or '') else None">
-                                                <t t-esc="mb.employee_id.name"/>
-                                            </option>
-                                        </select>
-                                    </td>
                                     <td><input type="number" name="reel_montant" class="form-control"
                                                t-att-value="fr['montant']" min="1" step="any"
                                                inputmode="decimal"
@@ -704,15 +838,6 @@
                                 </tr>
                                 <tr t-if="not form_values['frais']">
                                     <td><input type="text" name="reel_description" class="form-control"/></td>
-                                    <td t-if="len(mission.membre_ids) &gt; 1">
-                                        <select name="reel_membre" class="form-select">
-                                            <option value="">Chef de mission</option>
-                                            <option t-foreach="mission.membre_ids" t-as="mb"
-                                                    t-att-value="mb.employee_id.id">
-                                                <t t-esc="mb.employee_id.name"/>
-                                            </option>
-                                        </select>
-                                    </td>
                                     <td><input type="number" name="reel_montant" class="form-control"
                                                min="1" step="any" inputmode="decimal"
                                                onkeydown="return ['e','E','+','-'].indexOf(event.key) === -1"/></td>
@@ -737,11 +862,15 @@
                         <div t-if="error.get('frais')" class="text-danger small mb-2">
                             <t t-esc="error['frais']"/>
                         </div>
+                        </t>
 
                         <div class="mt-2">
-                            <button type="submit" class="btn btn-primary"
+                            <button t-if="est_chef" type="submit" class="btn btn-primary"
                                     onclick="return confirm('Déclarer votre retour ? Le décompte définitif sera recalculé.');">
                                 <i class="fa fa-check"/> Déclarer mon retour
+                            </button>
+                            <button t-else="" type="submit" class="btn btn-primary">
+                                <i class="fa fa-upload"/> Enregistrer mes frais et justificatifs
                             </button>
                             <a t-attf-href="/my/missions/#{mission.id}" class="btn btn-link">Annuler</a>
                         </div>

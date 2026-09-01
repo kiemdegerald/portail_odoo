@@ -53,6 +53,7 @@
             <tree string="Types d'indemnité" editable="bottom">
                 <field name="sequence" widget="handle"/>
                 <field name="name"/>
+                <field name="a_justifier" widget="boolean_toggle"/>
                 <field name="company_id" groups="base.group_multi_company"
                        options="{'no_create': True}"/>
                 <field name="active" widget="boolean_toggle"/>

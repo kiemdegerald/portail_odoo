@@ -66,6 +66,12 @@
                             <field name="gm_decompte_individuel"/>
                         </setting>
                     </block>
+                    <block title="Retour de mission" name="gm_block_retour">
+                        <setting string="Exiger les visas de départ et de retour"
+                                 help="À la déclaration du retour, le chef de mission joint le document visé au départ ET celui visé au retour (feuille de route tamponnée, ordre de mission visé sur place...). Sans ces deux pièces, le retour ne peut pas être déclaré. Décoché, rien ne change. Le réglage est photographié à la soumission : l'activer n'impose rien aux missions déjà parties.">
+                            <field name="gm_visa_exige"/>
+                        </setting>
+                    </block>
                 </app>
             </xpath>
         </field>

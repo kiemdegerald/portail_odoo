@@ -54,6 +54,7 @@ MISSION_SUCCESS_MESSAGES = {
     "returned": "Votre retour de mission a été déclaré. Le décompte "
                 "définitif est calculé ; le service RH le vérifie avant "
                 "le règlement du solde.",
+    "justificatifs": "Vos justificatifs ont été déposés. La mission pourra être clôturée quand tous les missionnaires auront fourni les leurs.",
     "created_for": "Le brouillon a été créé pour votre collaborateur : il "
                    "pourra le compléter et le soumettre depuis son portail.",
     "submitted_for": "La demande a été soumise au nom de votre collaborateur.",
@@ -386,9 +387,41 @@ class PortailMission(PortailCommon):
             "error_message": error,
             "is_validator_view": as_validator,
             "is_chef": mission.employee_id in employees,
+            # Le CHEF déclare les dates ; chaque MEMBRE vient déposer ses
+            # justificatifs — y compris après la déclaration du retour,
+            # tant que la mission n'est pas clôturée.
             "can_declare_return": (mission.state == "validated"
                                    and mission.employee_id in employees),
+            # Le chef aussi doit pouvoir revenir déposer SES pièces une
+            # fois le retour déclaré : sans cela il n'avait plus aucun
+            # lien, et la mission restait impossible à clôturer.
+            "can_deposer_pieces": (
+                mission.state in ("validated", "returned")
+                and bool(mission.membre_ids.employee_id & employees)
+                and not (mission.state == "validated"
+                         and mission.employee_id in employees)),
+            "mes_pieces_manquantes": len(mission.indemnite_ids.filtered(
+                lambda l: l.a_justifier and not l.justificatif
+                and l.membre_id.employee_id in employees)),
             "can_decide_now": can_decide_now,
+            # Le tableau des membres suit le MÊME réglage que la fiche
+            # imprimée : si la banque a choisi que chacun ne voie que sa
+            # ligne, l'écran du portail ne doit pas dire le contraire.
+            "membres_visibles": (
+                mission.membre_ids.filtered(
+                    lambda x: x.employee_id in employees)
+                if self._membre_du_decompte(mission, employees)
+                else mission.membre_ids),
+            # Les totaux affichés : ceux du GROUPE pour le chef et les
+            # valideurs, ceux du MISSIONNAIRE quand chacun ne voit que sa
+            # ligne. Les deux objets portent les mêmes champs, seul le
+            # périmètre change.
+            "totaux": (self._membre_du_decompte(mission, employees)
+                       or mission),
+            # Le libellé du solde doit dire de QUOI on parle : le
+            # trop-perçu du groupe entier n'est pas celui du lecteur.
+            "totaux_global": not self._membre_du_decompte(
+                mission, employees),
             "page_name": "team_mission" if as_validator else "mission",
         }
         return request.render("portail_mission.portal_my_mission_detail", values)
@@ -524,13 +557,14 @@ class PortailMission(PortailCommon):
     # ------------------------------------------------------------------
     # Retour de mission (note de frais) — réservé au CHEF DE MISSION
     # ------------------------------------------------------------------
-    def _parse_frais_reels(self, mission, error):
+    def _parse_frais_reels(self, mission, error, membres=None):
         """Lignes de frais réels du formulaire de retour : montant,
         description, missionnaire, et justificatif éventuel (fichier
         téléversé ou pièce déjà enregistrée)."""
         form = request.httprequest.form
         files = request.httprequest.files
-        emp_ok = mission.membre_ids.employee_id.ids
+        emp_ok = (membres if membres is not None
+                  else mission.membre_ids).employee_id.ids
         lines = []
         descriptions = form.getlist("reel_description")
         montants = form.getlist("reel_montant")
@@ -576,19 +610,27 @@ class PortailMission(PortailCommon):
             })
         return lines
 
-    def _apply_frais_reels(self, mission, lines):
+    def _apply_frais_reels(self, mission, lines, membres=None):
         """Remplace les frais réels par ceux du formulaire, en conservant
         le justificatif déjà enregistré quand aucun nouveau fichier n'est
-        envoyé."""
+        envoyé.
+
+        ``membres`` borne le remplacement aux lignes de CES missionnaires.
+        Sans cette borne, un membre qui déclarait ses frais effaçait ceux
+        de ses collègues : chacun ne poste que son propre tableau.
+        """
+        concernes = membres if membres is not None else mission.membre_ids
+        anciennes = mission.frais_reels_ids.filtered(
+            lambda f: f.membre_id in concernes)
         anciens = {}
-        for ligne in mission.frais_reels_ids:
+        for ligne in anciennes:
             anciens[(ligne.description, ligne.membre_id.id)] = (
                 ligne.justificatif, ligne.justificatif_filename)
-        mission.frais_reels_ids.sudo().unlink()
-        emp_to_membre = {m.employee_id.id: m.id for m in mission.membre_ids}
-        chef = emp_to_membre.get(mission.employee_id.id)
+        anciennes.sudo().unlink()
+        emp_to_membre = {m.employee_id.id: m.id for m in concernes}
+        defaut = concernes[:1].id
         for ligne in lines:
-            membre_id = emp_to_membre.get(ligne.get("employee_id")) or chef
+            membre_id = emp_to_membre.get(ligne.get("employee_id")) or defaut
             vals = {
                 "mission_id": mission.id,
                 "membre_id": membre_id,
@@ -608,6 +650,59 @@ class PortailMission(PortailCommon):
                     vals["justificatif_filename"] = ancien[1]
             request.env["gm.mission.frais"].sudo().create(vals)
 
+    def _enregistrer_justificatifs(self, lignes, error):
+        """Dépose les pièces sur les lignes d'indemnité du missionnaire.
+
+        Le fichier est validé comme les justificatifs de frais : type
+        détecté depuis le CONTENU, taille bornée.
+        """
+        fichiers = request.httprequest.files
+        for ligne in lignes:
+            envoye = fichiers.get("indem_justif_%s" % ligne.id)
+            if not envoye or not envoye.filename:
+                continue
+            contenu = envoye.read()
+            if not contenu:
+                continue
+            try:
+                validate_justificatif(envoye.filename, contenu)
+            except ValidationError as exc:
+                error["justificatifs"] = exc.args[0] if exc.args else str(exc)
+                return
+            ligne.sudo().write({
+                "justificatif": base64.b64encode(contenu),
+                "justificatif_filename": envoye.filename,
+            })
+
+    def _enregistrer_visas(self, mission, error):
+        """Dépose les documents visés au départ et au retour.
+
+        Seul le chef de mission passe ici : les dates réelles valent pour
+        le groupe entier, les visas qui les prouvent aussi. Un champ vide
+        laisse en place la pièce déjà déposée — le chef peut revenir
+        corriger l'une sans redéposer l'autre.
+        """
+        if not mission.visa_exige:
+            return
+        fichiers = request.httprequest.files
+        vals = {}
+        for champ in ("visa_depart", "visa_retour"):
+            envoye = fichiers.get(champ)
+            if not envoye or not envoye.filename:
+                continue
+            contenu = envoye.read()
+            if not contenu:
+                continue
+            try:
+                validate_justificatif(envoye.filename, contenu)
+            except ValidationError as exc:
+                error["visas"] = exc.args[0] if exc.args else str(exc)
+                return
+            vals[champ] = base64.b64encode(contenu)
+            vals["%s_filename" % champ] = envoye.filename
+        if vals:
+            mission.sudo().write(vals)
+
     def _retour_form_values(self, mission, post=None):
         """Valeurs du formulaire de retour : depuis la mission, ou depuis
         la saisie en cours après une erreur."""
@@ -622,12 +717,16 @@ class PortailMission(PortailCommon):
                         mission.date_retour.strftime("%Y-%m-%d")
                         if mission.date_retour else ""),
                 "retour_commentaire": mission.retour_commentaire or "",
+                "visa_depart": mission.visa_depart_filename or "",
+                "visa_retour": mission.visa_retour_filename or "",
                 "frais": [{"description": f.description,
                            "montant": "%g" % f.montant,
                            "employee_id": f.membre_id.employee_id.id or "",
                            "justificatif": f.justificatif_filename or ""}
                           for f in (mission.frais_reels_ids
-                                    or mission.frais_prevus_ids)],
+                                    or mission.frais_prevus_ids).filtered(
+                              lambda x: x.membre_id.employee_id
+                              in self._get_portal_employees())],
             }
         form = request.httprequest.form
         membres = form.getlist("reel_membre")
@@ -644,6 +743,8 @@ class PortailMission(PortailCommon):
             "date_depart_reelle": post.get("date_depart_reelle") or "",
             "date_retour_reelle": post.get("date_retour_reelle") or "",
             "retour_commentaire": post.get("retour_commentaire") or "",
+            "visa_depart": mission.visa_depart_filename or "",
+            "visa_retour": mission.visa_retour_filename or "",
             "frais": frais,
         }
 
@@ -652,14 +753,43 @@ class PortailMission(PortailCommon):
                 methods=["GET", "POST"])
     def portal_my_mission_retour(self, mission_id=None, **post):
         try:
+            # Ouvert à TOUS les missionnaires : chacun dépose ses propres
+            # justificatifs et déclare ses frais. Seul le CHEF saisit les
+            # dates réelles — elles valent pour le groupe entier, puisque
+            # tout le monde rentre ensemble.
             mission = self._get_mission_or_raise(
-                mission_id, require_states=("validated",), require_chef=True)
+                mission_id, require_states=("validated", "returned"))
         except (AccessError, MissingError):
             return request.redirect("/my/missions")
+        employees = self._get_portal_employees()
+        est_chef = mission.employee_id in employees
+        mes_lignes = mission.indemnite_ids.filtered(
+            lambda l: l.membre_id.employee_id in employees)
 
         error = {}
         if request.httprequest.method == "POST":
-            lignes = self._parse_frais_reels(mission, error)
+            # Les justificatifs d'indemnité : chacun ne dépose que sur SES
+            # lignes — le filtre ci-dessus est la seule porte.
+            self._enregistrer_justificatifs(mes_lignes, error)
+            # Les visas prouvent les dates réelles : c'est le chef qui les
+            # saisit, c'est donc lui qui dépose les pièces.
+            if est_chef:
+                self._enregistrer_visas(mission, error)
+            # Chacun ne déclare QUE ses propres frais : le remplacement est
+            # borné à ses lignes, celles des collègues ne bougent pas.
+            mes_membres = mission.membre_ids.filtered(
+                lambda m: m.employee_id in employees)
+            # Les frais RÉELS n'existent qu'une fois le retour déclaré : le
+            # chef les saisit dans le même mouvement, les autres ensuite.
+            lignes = (self._parse_frais_reels(mission, error, mes_membres)
+                      if est_chef or mission.state == "returned" else [])
+            if not est_chef:
+                if not error:
+                    if mission.state == "returned":
+                        self._apply_frais_reels(mission, lignes, mes_membres)
+                    return request.redirect(
+                        "/my/missions/%s?success=justificatifs" % mission.id)
+                post = dict(post)
             if not error:
                 vals = {
                     "date_depart_reelle": (post.get("date_depart_reelle")
@@ -672,9 +802,12 @@ class PortailMission(PortailCommon):
                 try:
                     mission.sudo().write(vals)
                     # les frais réels n'acceptent l'écriture qu'à l'état
-                    # « returned » : on déclare d'abord, on remplace ensuite
-                    mission.sudo().action_declare_return()
-                    self._apply_frais_reels(mission, lignes)
+                    # « returned » : on déclare d'abord, on remplace ensuite.
+                    # Le retour peut déjà avoir été déclaré — le chef
+                    # revient alors seulement compléter ses pièces.
+                    if mission.state == "validated":
+                        mission.sudo().action_declare_return()
+                    self._apply_frais_reels(mission, lignes, mes_membres)
                     return request.redirect(
                         "/my/missions/%s?success=returned" % mission.id)
                 except (UserError, ValidationError) as exc:
@@ -687,6 +820,9 @@ class PortailMission(PortailCommon):
             "form_values": self._retour_form_values(
                 mission, post if request.httprequest.method == "POST" else None),
             "error": error,
+            "est_chef": est_chef,
+            # Chacun ne voit QUE ses propres lignes d'indemnité.
+            "mes_lignes": mes_lignes,
             "page_name": "mission",
         }
         return request.render(

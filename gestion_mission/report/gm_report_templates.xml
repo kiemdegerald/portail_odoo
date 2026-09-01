@@ -174,14 +174,18 @@
                             </tbody>
                         </table>
 
-                        <p class="fst-italic mb-1">*Autres frais :
-                            <t t-if="not doc.frais_ids.filtered(lambda f: f.type_frais == ('reel' if definitif else 'prevu'))">-</t>
-                        </p>
+                        <!-- La note suit le tableau : sur un décompte
+                             INDIVIDUEL, elle ne détaille que les frais du
+                             missionnaire concerné. Sans ce filtre, elle
+                             révélait les montants de ses collègues. -->
                         <t t-set="frais_retenus"
-                           t-value="doc.frais_ids.filtered(lambda f: f.type_frais == ('reel' if definitif else 'prevu'))"/>
+                           t-value="doc.frais_ids.filtered(lambda f: f.type_frais == ('reel' if definitif else 'prevu') and f.membre_id in membres_decompte)"/>
+                        <p class="fst-italic mb-1">*Autres frais :
+                            <t t-if="not frais_retenus">-</t>
+                        </p>
                         <ul t-if="frais_retenus" class="fst-italic">
                             <li t-foreach="frais_retenus" t-as="frais">
-                                <t t-if="len(doc.membre_ids) > 1 and frais.membre_id">
+                                <t t-if="not membre_seul and len(doc.membre_ids) > 1 and frais.membre_id">
                                     <t t-out="frais.membre_id.nom_affiche"/> — </t>
                                 <span t-field="frais.description"/> :
                                 <span t-field="frais.montant"
