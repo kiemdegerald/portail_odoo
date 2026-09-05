@@ -314,10 +314,49 @@
                                 <strong><span t-out="-totaux.solde" t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></strong>
                             </t>
                             <t t-else="">Rien à régler.</t>
+                            <!-- Dire POURQUOI le solde est ce qu'il est :
+                                 sans cela l'agent voit une somme à rendre
+                                 sans comprendre d'où elle sort. -->
+                            <div t-if="totaux.retenue_non_depense"
+                                 class="small text-muted mt-1">
+                                Dont
+                                <strong><span t-out="totaux.retenue_non_depense"
+                                      t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/></strong>
+                                reçus mais non dépensés sur les indemnités à
+                                justifier, retenus sur le décompte.
+                            </div>
                             <span t-if="mission.solde_regle"
                                   class="badge rounded-pill text-bg-success ms-1">Réglé</span>
                         </div>
                     </div>
+
+                    <!-- Où en est MA déclaration. La RH traite chaque
+                         missionnaire séparément : un collègue en retard
+                         ne dit rien de mon propre dossier. -->
+                    <t t-if="ma_declaration and mission.state == 'returned'">
+                        <div t-if="ma_declaration.retour_state == 'a_corriger'"
+                             class="alert alert-warning" role="alert">
+                            <strong>Votre déclaration est à corriger.</strong>
+                            <div class="mt-1" style="white-space: pre-wrap;"
+                                 t-esc="ma_declaration.retour_motif"/>
+                            <div class="mt-2">
+                                <a t-attf-href="/my/missions/#{mission.id}/retour"
+                                   class="btn btn-sm btn-primary">
+                                    <i class="fa fa-pencil"/> Corriger ma déclaration
+                                </a>
+                            </div>
+                        </div>
+                        <div t-if="ma_declaration.retour_state == 'declare'"
+                             class="alert alert-info" role="alert">
+                            <strong>Votre déclaration est déposée.</strong>
+                            La RH la vérifie.
+                        </div>
+                        <div t-if="ma_declaration.retour_state == 'valide'"
+                             class="alert alert-success" role="alert">
+                            <strong>Votre déclaration est validée.</strong>
+                            Elle n'est plus modifiable.
+                        </div>
+                    </t>
 
                     <h5 class="mt-3">Informations</h5>
                     <table class="table table-sm">
@@ -678,6 +717,7 @@
                                     <tr class="active">
                                         <th>Type</th>
                                         <th class="text-end">Montant reçu</th>
+                                        <th class="text-end">Montant dépensé</th>
                                         <th>Justificatif</th>
                                     </tr>
                                 </thead>
@@ -691,6 +731,21 @@
                                         <td class="text-end">
                                             <span t-field="ligne.montant"
                                                   t-options='{"widget": "monetary", "display_currency": mission.currency_id}'/>
+                                        </td>
+                                        <!-- Ce que l'agent déclare avoir
+                                             réellement dépensé. Saisissable
+                                             sur TOUTES les lignes : même une
+                                             indemnité forfaitaire, il peut
+                                             vouloir dire ce qu'elle lui a
+                                             coûté. Seules les lignes « à
+                                             justifier » l'exigent. -->
+                                        <td class="text-end" style="max-width: 160px;">
+                                            <input type="number" min="0" step="1"
+                                                   t-attf-name="indem_depense_#{ligne.id}"
+                                                   class="form-control form-control-sm text-end"
+                                                   t-att-required="'required' if ligne.a_justifier else None"
+                                                   t-att-value="'%g' % ligne.montant_depense if ligne.montant_depense else ''"
+                                                   placeholder="0"/>
                                         </td>
                                         <td>
                                             <t t-if="not ligne.a_justifier">
@@ -711,6 +766,15 @@
                                     </tr>
                                 </tbody>
                             </table>
+                            <p class="text-muted small mb-2">
+                                Indiquez ce que vous avez réellement dépensé.
+                                C'est obligatoire sur les indemnités marquées
+                                « à justifier », qui demandent en plus la pièce ;
+                                ailleurs, c'est à titre indicatif.
+                            </p>
+                            <div t-if="error.get('depenses')" class="text-danger small mb-2">
+                                <t t-esc="error['depenses']"/>
+                            </div>
                             <div t-if="error.get('justificatifs')" class="text-danger small mb-2">
                                 <t t-esc="error['justificatifs']"/>
                             </div>
@@ -1040,7 +1104,37 @@
                                     <t t-esc="error['transport']"/>
                                 </div>
                             </div>
+                            <!-- L'immatriculation ne concerne que le
+                                 véhicule de service. Le bloc est montré
+                                 ou caché par le petit script en bas de
+                                 page, selon le transport choisi. -->
+                            <div class="col-md-4 mb-3" id="gm_immat_bloc"
+                                 t-att-style="'' if form_values['transport'] == 'service' else 'display: none;'">
+                                <label class="form-label" for="gm_immat">Immatriculation</label>
+                                <input type="text" name="immatriculation" id="gm_immat"
+                                       class="form-control" maxlength="32"
+                                       placeholder="BF 1666 E3 03"
+                                       t-att-value="form_values['immatriculation']"/>
+                                <small class="text-muted">Facultative.</small>
+                            </div>
                         </div>
+                        <script type="text/javascript">
+                            // Sans widget Odoo sur le portail : on montre
+                            // ou on cache le bloc à la main.
+                            (function () {
+                                var choix = document.getElementById('gm_transport');
+                                var bloc = document.getElementById('gm_immat_bloc');
+                                if (!choix || !bloc) { return; }
+                                choix.addEventListener('change', function () {
+                                    var service = choix.value === 'service';
+                                    bloc.style.display = service ? '' : 'none';
+                                    if (!service) {
+                                        var champ = document.getElementById('gm_immat');
+                                        if (champ) { champ.value = ''; }
+                                    }
+                                });
+                            })();
+                        </script>
 
                         <div class="mb-3">
                             <label class="form-label" for="gm_description">Précisions</label>

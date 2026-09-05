@@ -73,6 +73,8 @@
                 <group>
                     <field name="mission_id" invisible="1"/>
                     <field name="action"/>
+                    <field name="membre_id" invisible="not membre_id"
+                           readonly="1"/>
                     <field name="comment"
                            placeholder="Obligatoire — visible par le demandeur."/>
                 </group>

@@ -67,6 +67,45 @@ class GmMissionIndemnite(models.Model):
     def _compute_montant(self):
         for ligne in self:
             ligne.montant = (ligne.jours or 0.0) * (ligne.montant_jour or 0.0)
+    mission_state = fields.Selection(
+        related="mission_id.state", string="État de la mission",
+        readonly=True,
+        help="Report technique : dans la fiche du missionnaire, `parent` "
+             "désigne le membre et non la mission — sans ce champ, aucune "
+             "condition d'écran ne peut s'appuyer sur l'état du dossier.")
+
+    # --- Ce qui a réellement été dépensé --------------------------------
+    # Saisi par le missionnaire au retour, en regard du montant reçu.
+    # On ne touche PAS au décompte avec : c'est une déclaration, que la
+    # RH lit à côté de la pièce justificative.
+    montant_depense = fields.Monetary(
+        string="Montant dépensé", copy=False,
+        help="Ce que le missionnaire déclare avoir réellement dépensé sur "
+             "cette indemnité. Exigé au retour, avec la pièce, sur les "
+             "indemnités marquées « à justifier ».")
+    ecart_depense = fields.Monetary(
+        string="Écart", compute="_compute_ecart_depense", store=True,
+        help="Reçu moins dépensé. Positif : l'agent n'a pas tout dépensé. "
+             "Négatif : il a dépensé plus qu'il n'a reçu.")
+
+    @api.depends("montant", "montant_depense")
+    def _compute_ecart_depense(self):
+        for ligne in self:
+            ligne.ecart_depense = (ligne.montant or 0.0) - (
+                ligne.montant_depense or 0.0)
+
+    def _incompletes(self):
+        """Les lignes à justifier qui ne sont pas encore en règle.
+
+        Une indemnité à justifier n'est complète qu'avec le montant
+        réellement dépensé ET la pièce qui le prouve : un justificatif
+        sans montant déclaré ne dit pas ce qui a été dépensé, et un
+        montant sans pièce ne prouve rien.
+        """
+        return self.filtered(
+            lambda l: l.a_justifier
+            and (not l.justificatif or not l.montant_depense))
+
     # --- La preuve, quand la RH l'exige --------------------------------
     justificatif = fields.Binary(
         string="Justificatif", attachment=True, copy=False,

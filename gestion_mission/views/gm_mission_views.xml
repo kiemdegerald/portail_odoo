@@ -82,6 +82,7 @@
                             <field name="zone_id" readonly="state != 'draft'" options="{'no_create': True}"/>
                             <field name="transport" readonly="state != 'draft'"/>
                             <field name="immatriculation"
+                                   invisible="transport != 'service'"
                                    readonly="state != 'draft'"
                                    placeholder="BF 1666 E3 03"/>
                         </group>
@@ -190,30 +191,184 @@
                                     <field name="solde"
                                            column_invisible="parent.state == 'draft'"/>
                                     <field name="currency_id" column_invisible="1"/>
+                                    <!-- La déclaration de retour de CE
+                                         missionnaire : la RH la traite
+                                         agent par agent, sans bloquer
+                                         les autres. -->
+                                    <field name="retour_state"
+                                           widget="badge"
+                                           decoration-success="retour_state == 'valide'"
+                                           decoration-warning="retour_state == 'declare'"
+                                           decoration-danger="retour_state == 'a_corriger'"
+                                           column_invisible="parent.state not in ('returned', 'closed')"/>
+                                    <field name="retour_motif" optional="hide"
+                                           column_invisible="parent.state not in ('returned', 'closed')"/>
+                                    <field name="retour_valide_par_id" optional="hide"
+                                           column_invisible="parent.state not in ('returned', 'closed')"/>
+                                    <button name="action_declaration_validee"
+                                            type="object" icon="fa-check"
+                                            title="Valider la déclaration de ce missionnaire"
+                                            invisible="retour_state == 'valide' or not employee_id"
+                                            column_invisible="parent.state != 'returned'"/>
+                                    <button name="action_ouvrir_renvoi"
+                                            type="object" icon="fa-undo"
+                                            title="Renvoyer la déclaration pour correction"
+                                            invisible="retour_state in ('a_declarer', 'a_corriger') or not employee_id"
+                                            column_invisible="parent.state != 'returned'"/>
+                                    <!-- La fiche de décompte de CE
+                                         missionnaire seul. Rien à sortir
+                                         tant que la mission est en
+                                         brouillon. -->
+                                    <button name="action_imprimer_decompte"
+                                            type="object" icon="fa-file-pdf-o"
+                                            title="Imprimer le décompte de ce missionnaire"
+                                            string="Décompte"
+                                            column_invisible="parent.state == 'draft'"/>
                                 </tree>
                             </field>
                         </page>
                         <!-- Le detail poste par poste : d'ou vient
                              l'indemnite de chaque missionnaire. -->
                         <page string="Indemnités" name="indemnites">
-                            <field name="indemnite_ids"
-                                   readonly="state != 'draft' or avance_versee">
-                                <tree string="Détail des indemnités" editable="bottom">
-                                    <field name="sequence" widget="handle"/>
-                                    <field name="membre_id"
-                                           options="{'no_create': True}"
-                                           domain="[('mission_id', '=', parent.id)]"/>
-                                    <field name="type_id"
-                                           options="{'no_create_edit': True}"/>
-                                    <field name="jours"/>
-                                    <field name="montant_jour"/>
-                                    <field name="montant" sum="Total"/>
-                                    <field name="a_justifier" widget="boolean_toggle"/>
-                                    <field name="justificatif_filename" column_invisible="1"/>
-                                    <field name="justificatif" widget="binary"
-                                           filename="justificatif_filename"/>
+                            <!-- Un MISSIONNAIRE par ligne. Le détail
+                                 poste par poste s'ouvre en cliquant :
+                                 la liste à plat, une ligne par membre ET
+                                 par type, devenait illisible dès qu'une
+                                 mission comptait plusieurs agents. -->
+                            <field name="decompte_ids"
+                                   readonly="state in ('closed', 'cancelled')">
+                                <tree string="Décompte par missionnaire"
+                                      create="false" delete="false">
+                                    <field name="nom_affiche"/>
+                                    <field name="categorie_agent"
+                                           column_invisible="parent.state == 'draft'"/>
+                                    <field name="indemnite_total" sum="Total"/>
+                                    <field name="depense_total" sum="Total"
+                                           column_invisible="parent.state in ('draft', 'submitted')"/>
+                                    <field name="ecart_total" sum="Total"
+                                           column_invisible="parent.state in ('draft', 'submitted')"/>
+                                    <field name="nb_a_justifier"
+                                           string="Pièces attendues"
+                                           column_invisible="parent.state in ('draft', 'submitted')"
+                                           decoration-danger="nb_a_justifier &gt; 0"/>
+                                    <field name="retour_state" widget="badge"
+                                           decoration-success="retour_state == 'valide'"
+                                           decoration-warning="retour_state == 'declare'"
+                                           decoration-danger="retour_state == 'a_corriger'"
+                                           column_invisible="parent.state not in ('returned', 'closed')"/>
                                     <field name="currency_id" column_invisible="1"/>
                                 </tree>
+                                <form string="Décompte du missionnaire">
+                                    <sheet>
+                                        <div class="oe_title">
+                                            <h1><field name="nom_affiche" readonly="1"/></h1>
+                                            <h3 class="text-muted">
+                                                <field name="job_title" readonly="1"/>
+                                            </h3>
+                                        </div>
+                                        <group>
+                                            <group string="Le missionnaire">
+                                                <field name="categorie_agent" readonly="1"/>
+                                                <field name="indemnite_jour" readonly="1"/>
+                                                <field name="compte_bancaire" readonly="1"/>
+                                                <field name="currency_id" invisible="1"/>
+                                            </group>
+                                            <group string="Son décompte">
+                                                <field name="indemnite_total"/>
+                                                <field name="depense_total"/>
+                                                <field name="ecart_total"/>
+                                                <field name="retenue_non_depense"/>
+                                                <field name="autres_frais" readonly="1"/>
+                                                <field name="avance_montant" readonly="1"/>
+                                                <field name="solde" readonly="1"/>
+                                            </group>
+                                        </group>
+                                        <group string="Déclaration de retour"
+                                               invisible="retour_state == 'a_declarer'">
+                                            <field name="retour_state" readonly="1"/>
+                                            <field name="retour_motif" readonly="1"
+                                                   invisible="not retour_motif"/>
+                                            <field name="retour_valide_par_id" readonly="1"
+                                                   invisible="not retour_valide_par_id"/>
+                                            <field name="retour_date_validation" readonly="1"
+                                                   invisible="not retour_date_validation"/>
+                                        </group>
+                                        <notebook>
+                                            <page string="Indemnités">
+                                                <field name="indemnite_ids">
+                                                    <!-- Ajout et suppression RESTENT ouverts :
+                                                         c'est ici, et nulle part ailleurs, que se
+                                                         saisissent à la main les indemnités d'un
+                                                         CHAUFFEUR, qui n'a ni classification ni
+                                                         barème. -->
+                                                    <tree editable="bottom">
+                                                        <field name="mission_state" column_invisible="1"/>
+                                                        <field name="sequence" widget="handle"/>
+                                                        <!-- Le barème est FIGÉ à la soumission :
+                                                             les valideurs ont statué dessus. Seuls
+                                                             le dépensé et la pièce restent
+                                                             corrigeables au retour. -->
+                                                        <field name="type_id"
+                                                               readonly="mission_state != 'draft'"
+                                                               options="{'no_create_edit': True}"/>
+                                                        <field name="jours"
+                                                               readonly="mission_state != 'draft'"/>
+                                                        <field name="montant_jour"
+                                                               readonly="mission_state != 'draft'"/>
+                                                        <field name="montant" sum="Total"
+                                                               readonly="mission_state != 'draft'"/>
+                                                        <field name="montant_depense" sum="Total"/>
+                                                        <field name="ecart_depense" sum="Total"/>
+                                                        <field name="a_justifier"
+                                                               readonly="mission_state != 'draft'"
+                                                               widget="boolean_toggle"/>
+                                                        <field name="justificatif_filename"
+                                                               column_invisible="1"/>
+                                                        <field name="justificatif" widget="binary"
+                                                               filename="justificatif_filename"/>
+                                                        <field name="currency_id"
+                                                               column_invisible="1"/>
+                                                    </tree>
+                                                </field>
+                                            </page>
+                                            <page string="Autres frais">
+                                                <!-- En LECTURE SEULE. Un tableau
+                                                     modifiable ici ouvrait une ligne
+                                                     vide et demandait de choisir une
+                                                     « Nature » (Prévu / Réel) —
+                                                     distinction interne, que personne
+                                                     ne doit fixer à la main : elle
+                                                     dépend de l'état de la mission.
+                                                     Les frais se corrigent dans les
+                                                     onglets « Frais prévus » et
+                                                     « Frais réels » de la mission. -->
+                                                <field name="frais_ids" readonly="1">
+                                                    <tree create="false" delete="false"
+                                                          decoration-danger="piece_manquante">
+                                                        <field name="type_frais"
+                                                               string="Nature"/>
+                                                        <field name="description"/>
+                                                        <field name="montant" sum="Total"/>
+                                                        <field name="justificatif_filename"
+                                                               column_invisible="1"/>
+                                                        <field name="justificatif" widget="binary"
+                                                               filename="justificatif_filename"/>
+                                                        <field name="piece_manquante"
+                                                               string="Pièce manquante"
+                                                               optional="show"/>
+                                                        <field name="currency_id"
+                                                               column_invisible="1"/>
+                                                    </tree>
+                                                </field>
+                                                <div class="text-muted mt-2">
+                                                    Pour corriger un frais, utilisez les
+                                                    onglets <strong>Frais prévus</strong> ou
+                                                    <strong>Frais réels</strong> de la mission.
+                                                </div>
+                                            </page>
+                                        </notebook>
+                                    </sheet>
+                                </form>
                             </field>
                             <div class="text-muted mt-2">
                                 Les indemnités des <strong>agents</strong> sont

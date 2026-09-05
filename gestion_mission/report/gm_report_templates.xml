@@ -44,7 +44,7 @@
         <p class="mb-1"><strong>Date de départ prévue :</strong> <span t-out="doc.date_depart and doc.date_depart.strftime('%d/%m/%Y') or ''"/></p>
         <p class="mb-1"><strong>Date de retour prévue :</strong> <span t-out="doc.date_retour and doc.date_retour.strftime('%d/%m/%Y') or ''"/></p>
         <p class="mb-1"><strong>Nombre de jours prévus :</strong> <t t-out="'%02d' % doc.duration"/> jour<t t-if="doc.duration &gt; 1">s</t></p>
-        <p class="mb-1"><strong>Moyen de déplacement :</strong> <t t-out="dict(doc._fields['transport'].selection).get(doc.transport, '')"/><t t-if="doc.immatriculation"> <t t-out="doc.immatriculation"/></t></p>
+        <p class="mb-1"><strong>Moyen de déplacement :</strong> <t t-out="dict(doc._fields['transport'].selection).get(doc.transport, '')"/><t t-if="doc.immatriculation and doc.transport == 'service'"> <t t-out="doc.immatriculation"/></t></p>
     </template>
 
     <!-- Bloc signature (à droite, comme sur le document réel) : ville de
@@ -125,7 +125,7 @@
                                    t-value="doc.indemnite_ids.type_id.sorted(lambda t: (t.sequence, t.id))"/>
                                 <tr>
                                     <th rowspan="2" style="border: 1px solid black; padding: 4px; text-align: center; vertical-align: middle; width: 34%;">Nom et Prénom(s)</th>
-                                    <th t-att-colspan="(len(types) or 1) + 2" style="border: 1px solid black; padding: 4px; text-align: center;">Total reçu par missionnaire</th>
+                                    <th t-att-colspan="(len(types) or 1) + 2 + (1 if doc.retenue_non_depense else 0)" style="border: 1px solid black; padding: 4px; text-align: center;">Total reçu par missionnaire</th>
                                 </tr>
                                 <tr>
                                     <t t-if="types">
@@ -134,6 +134,7 @@
                                     </t>
                                     <th t-else="" style="border: 1px solid black; padding: 4px; text-align: center;">Perdiems<br/>(<t t-out="'%02d' % jours"/> jours)</th>
                                     <th style="border: 1px solid black; padding: 4px; text-align: center;">Autres frais<br/>(à justifier)</th>
+                                    <th t-if="doc.retenue_non_depense" style="border: 1px solid black; padding: 4px; text-align: center;">Retenue<br/>(non dépensé)</th>
                                     <th style="border: 1px solid black; padding: 4px; text-align: center;">Total</th>
                                 </tr>
                             </thead>
@@ -154,6 +155,8 @@
                                               t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
                                     <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="membre.autres_frais"
                                               t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
+                                    <td t-if="doc.retenue_non_depense" style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="membre.retenue_non_depense"
+                                              t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
                                     <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="membre.total_du"
                                               t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
                                 </tr>
@@ -167,6 +170,8 @@
                                     <td t-else="" style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="doc.indemnite_total"
                                               t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
                                     <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="doc.autres_frais"
+                                              t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
+                                    <td t-if="doc.retenue_non_depense" style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="doc.retenue_non_depense"
                                               t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>
                                     <td style="border: 1px solid black; padding: 4px; text-align: right;"><span t-field="doc.total_du"
                                               t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/></td>

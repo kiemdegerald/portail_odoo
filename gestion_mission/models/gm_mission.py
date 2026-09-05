@@ -66,8 +66,19 @@ class GmMission(models.Model):
         MISSION_TRANSPORTS, string="Moyen de transport", default="service")
     immatriculation = fields.Char(
         string="Immatriculation",
-        help="Immatriculation du véhicule, imprimée à la suite du moyen de "
-             "déplacement (ex. « Véhicule BF 1666 E3 03 »). Facultative.")
+        help="Immatriculation du véhicule de service, imprimée à la suite "
+             "du moyen de déplacement (ex. « Véhicule BF 1666 E3 03 »). "
+             "Facultative.")
+
+    @api.onchange("transport")
+    def _onchange_transport(self):
+        """Une plaque n'a de sens que pour un véhicule de service.
+
+        Sans cela, une plaque saisie puis le transport changé restait en
+        base — et s'imprimait sur l'ordre de mission derrière « Avion ».
+        """
+        if self.transport != "service":
+            self.immatriculation = False
     description = fields.Text(
         string="Précisions",
         help="Contexte, participants, programme prévisionnel...")
@@ -129,6 +140,14 @@ class GmMission(models.Model):
         string="Solde réglé", copy=False, tracking=True,
         help="À cocher par la finance : complément versé au missionnaire "
              "ou trop-perçu récupéré.")
+
+    # Même relation que `membre_ids`, second point de vue : l'onglet
+    # Indemnités liste les MISSIONNAIRES, et le détail poste par poste
+    # s'ouvre en cliquant sur l'un d'eux. Un one2many ne pouvant pas
+    # figurer deux fois dans la même vue, il en faut deux.
+    decompte_ids = fields.One2many(
+        "gm.mission.membre", "mission_id",
+        string="Décompte par missionnaire", copy=False)
 
     # --- Membres et indemnités (photo par MEMBRE, prise à la soumission) ---
     membre_ids = fields.One2many(
@@ -323,10 +342,24 @@ class GmMission(models.Model):
             mission.avance_montant = sum(
                 mission.membre_ids.mapped("avance_montant"))
 
-    @api.depends("indemnite_total", "autres_frais", "avance_montant")
+    retenue_non_depense = fields.Monetary(
+        string="Retenue (non dépensé)", compute="_compute_retenue",
+        store=True, readonly=True, copy=False,
+        help="Somme des retenues des missionnaires : ce qui a été reçu "
+             "sur une indemnité à justifier mais pas dépensé.")
+
+    @api.depends("membre_ids.retenue_non_depense")
+    def _compute_retenue(self):
+        for mission in self:
+            mission.retenue_non_depense = sum(
+                mission.membre_ids.mapped("retenue_non_depense"))
+
+    @api.depends("indemnite_total", "autres_frais", "avance_montant",
+                 "retenue_non_depense")
     def _compute_total_du(self):
         for mission in self:
-            mission.total_du = mission.indemnite_total + mission.autres_frais
+            mission.total_du = (mission.indemnite_total + mission.autres_frais
+                                - mission.retenue_non_depense)
             mission.solde = mission.total_du - mission.avance_montant
 
     @api.depends("validation_line_ids.state")
@@ -949,6 +982,13 @@ class GmMission(models.Model):
                 "retour_declare_par_id": self.env.uid,
                 "retour_date_declaration": fields.Datetime.now(),
             })
+            # Celui qui déclare dépose du même coup SA propre
+            # déclaration : ses pièces et ses montants sont déjà saisis.
+            mes_employes = mission._gm_employes_utilisateur()
+            if mes_employes:
+                mission.membre_ids.filtered(
+                    lambda m: m.employee_id in mes_employes
+                )._marquer_declaree()
             mission.message_post(body=_(
                 "Retour déclaré : du %(du)s au %(au)s (%(jours)s jour(s) "
                 "réels contre %(prevus)s prévus). Décompte définitif : "
@@ -1001,14 +1041,13 @@ class GmMission(models.Model):
         if not mes_employes:
             return
         manquantes = self.indemnite_ids.filtered(
-            lambda l: l.a_justifier and not l.justificatif
-            and l.membre_id.employee_id in mes_employes)
+            lambda l: l.membre_id.employee_id in mes_employes)._incompletes()
         if not manquantes:
             return
         raise UserError(_(
-            "Déposez d'abord VOS justificatifs : %s.\n\n"
-            "Ces indemnités doivent être justifiées. Joignez les pièces "
-            "sur la même page, puis déclarez le retour.",
+            "Complétez d'abord VOS indemnités à justifier : %s.\n\n"
+            "Pour chacune, indiquez le montant réellement dépensé et "
+            "joignez la pièce, sur la même page, puis déclarez le retour.",
             ", ".join(manquantes.mapped("type_id.name"))))
 
     def action_close(self):
@@ -1022,8 +1061,23 @@ class GmMission(models.Model):
             # Les indemnités que la RH a marquées « à justifier » : sans
             # la pièce, la mission ne se clôt pas. On nomme QUI doit quoi —
             # chacun ne fournit que ses propres preuves depuis le portail.
-            indem_sans_piece = mission.indemnite_ids.filtered(
-                lambda l: l.a_justifier and not l.justificatif)
+            # Chaque agent répond de SA déclaration : la mission ne se
+            # clôt que lorsque la RH les a toutes validées. Un chauffeur
+            # du répertoire n'a pas de portail et ne déclare rien — sa
+            # ligne n'est pas exigée ici.
+            en_attente = mission.membre_ids.filtered(
+                lambda m: m.employee_id and m.retour_state != "valide")
+            if en_attente:
+                raise UserError(_(
+                    "Déclarations de retour non validées : %s.\n\n"
+                    "Validez chaque missionnaire dans l'onglet Membres "
+                    "(ou renvoyez-lui sa déclaration) avant de clôturer.",
+                    ", ".join(
+                        "%s (%s)" % (m.nom_affiche or "",
+                                     dict(m._fields["retour_state"].selection)
+                                     .get(m.retour_state, ""))
+                        for m in en_attente)))
+            indem_sans_piece = mission.indemnite_ids._incompletes()
             if indem_sans_piece:
                 manquants = ["%s — %s" % (l.membre_id.nom_affiche or "",
                                           l.type_id.name or "")

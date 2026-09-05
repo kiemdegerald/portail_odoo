@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
+import logging
+
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
+
+_logger = logging.getLogger(__name__)
 
 
 class GmMissionMembre(models.Model):
@@ -113,6 +117,33 @@ class GmMissionMembre(models.Model):
     def _compute_indemnite_total(self):
         for membre in self:
             membre.indemnite_total = sum(membre.indemnite_ids.mapped("montant"))
+    depense_total = fields.Monetary(
+        string="Dépensé", compute="_compute_depense_total", store=True,
+        readonly=True, copy=False,
+        help="Somme de ce que le missionnaire déclare avoir réellement "
+             "dépensé, tous types d'indemnité confondus.")
+    ecart_total = fields.Monetary(
+        string="Écart", compute="_compute_depense_total", store=True,
+        readonly=True, copy=False,
+        help="Reçu moins dépensé. Positif : il n'a pas tout dépensé.")
+
+    @api.depends("indemnite_ids.montant_depense", "indemnite_total")
+    def _compute_depense_total(self):
+        for membre in self:
+            membre.depense_total = sum(
+                membre.indemnite_ids.mapped("montant_depense"))
+            membre.ecart_total = (membre.indemnite_total
+                                  - membre.depense_total)
+
+    nb_a_justifier = fields.Integer(
+        string="Pièces attendues", compute="_compute_nb_a_justifier",
+        help="Indemnités à justifier encore incomplètes : montant dépensé "
+             "manquant, ou pièce manquante.")
+
+    def _compute_nb_a_justifier(self):
+        for membre in self:
+            membre.nb_a_justifier = len(membre.indemnite_ids._incompletes())
+
     frais_ids = fields.One2many(
         "gm.mission.frais", "membre_id", string="Frais du membre")
     autres_frais = fields.Monetary(
@@ -135,6 +166,40 @@ class GmMissionMembre(models.Model):
          "qu'une seule fois."),
     ]
 
+    # `employee_id` est NULL sur une ligne de CHAUFFEUR : la contrainte
+    # ci-dessus, qui porte sur lui, laisse donc passer autant de lignes
+    # chauffeur qu'on veut — y compris le MÊME chauffeur deux fois, dont
+    # les indemnités seraient alors comptées double.
+    @api.constrains("mission_id", "chauffeur_id")
+    def _check_chauffeur_unique(self):
+        for membre in self:
+            if membre.chauffeur_id and self.search_count([
+                ("id", "!=", membre.id),
+                ("mission_id", "=", membre.mission_id.id),
+                ("chauffeur_id", "=", membre.chauffeur_id.id),
+            ]):
+                raise ValidationError(_(
+                    "%s figure déjà parmi les missionnaires : il ne peut y "
+                    "apparaître qu'une seule fois.",
+                    membre.chauffeur_id.name))
+
+    def init(self):
+        super().init()
+        # Index partiel : le filet, y compris pour un import. Un doublon
+        # deja en base ferait echouer sa creation : on trace plutot que de
+        # bloquer la mise a jour du module.
+        try:
+            with self.env.cr.savepoint():
+                self.env.cr.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS "
+                    "gm_mission_membre_chauffeur_uniq "
+                    "ON gm_mission_membre (mission_id, chauffeur_id) "
+                    "WHERE chauffeur_id IS NOT NULL")
+        except Exception as exc:
+            _logger.warning(
+                "Index d'unicite du chauffeur non cree "
+                "(doublons existants ?) : %s", exc)
+
     @api.depends("frais_ids.montant", "frais_ids.type_frais",
                  "mission_id.state")
     def _compute_autres_frais(self):
@@ -144,10 +209,36 @@ class GmMissionMembre(models.Model):
                     lambda f: f.type_frais == membre.mission_id._frais_actifs()
                 ).mapped("montant"))
 
-    @api.depends("indemnite_total", "autres_frais", "avance_montant")
+    retenue_non_depense = fields.Monetary(
+        string="Retenue (non dépensé)", compute="_compute_retenue",
+        store=True, readonly=True, copy=False,
+        help="Sur les indemnités À JUSTIFIER, la part reçue mais non "
+             "dépensée : elle est retenue sur le décompte définitif. "
+             "Les indemnités forfaitaires n'entrent pas dans ce calcul — "
+             "elles sont acquises à l'agent. Un dépassement n'est pas "
+             "remboursé ici : l'indemnité est un plafond, le surcoût se "
+             "déclare en « autres frais », pièce à l'appui.")
+
+    @api.depends("indemnite_ids.montant", "indemnite_ids.montant_depense",
+                 "indemnite_ids.a_justifier", "mission_id.state")
+    def _compute_retenue(self):
+        for membre in self:
+            # Avant le retour, rien n'est dépensé ni déclaré : retenir
+            # quoi que ce soit viderait le décompte sur lequel les
+            # valideurs ont statué, et fausserait l'avance.
+            if membre.mission_id.state not in ("returned", "closed"):
+                membre.retenue_non_depense = 0.0
+                continue
+            membre.retenue_non_depense = sum(
+                max(0.0, (l.montant or 0.0) - (l.montant_depense or 0.0))
+                for l in membre.indemnite_ids.filtered("a_justifier"))
+
+    @api.depends("indemnite_total", "autres_frais", "avance_montant",
+                 "retenue_non_depense")
     def _compute_total_du(self):
         for membre in self:
-            membre.total_du = membre.indemnite_total + membre.autres_frais
+            membre.total_du = (membre.indemnite_total + membre.autres_frais
+                               - membre.retenue_non_depense)
             membre.solde = membre.total_du - membre.avance_montant
 
     # ------------------------------------------------------------------
@@ -187,15 +278,162 @@ class GmMissionMembre(models.Model):
         missions = self.env["gm.mission"].browse(
             [v["mission_id"] for v in vals_list if v.get("mission_id")])
         self._check_mission_locked(missions)
+        # AVANT l'insertion : l'index partiel bloquerait bien le doublon,
+        # mais avec un message PostgreSQL brut.
+        for vals in vals_list:
+            self._refuser_chauffeur_double(vals.get("mission_id"),
+                                           vals.get("chauffeur_id"))
         return super().create(vals_list)
+
+    def _refuser_chauffeur_double(self, mission_id, chauffeur_id,
+                                  exclure=None):
+        if not (mission_id and chauffeur_id):
+            return
+        domaine = [("mission_id", "=", mission_id),
+                   ("chauffeur_id", "=", chauffeur_id)]
+        if exclure:
+            domaine = [("id", "!=", exclure)] + domaine
+        if self.search_count(domaine):
+            nom = self.env["gm.chauffeur"].browse(chauffeur_id).name
+            raise ValidationError(_(
+                "%s figure déjà parmi les missionnaires : il ne peut y "
+                "apparaître qu'une seule fois.", nom))
 
     def write(self, vals):
         # la photo (écrite par la soumission) et la remise à zéro (retour
         # en brouillon) passent par sudo métier avec avance non versée ;
         # ici on ne verrouille que le cas avance déjà décaissée.
         self._check_mission_locked(self.mapped("mission_id"))
+        if "chauffeur_id" in vals or "mission_id" in vals:
+            for membre in self:
+                self._refuser_chauffeur_double(
+                    vals.get("mission_id", membre.mission_id.id),
+                    vals.get("chauffeur_id", membre.chauffeur_id.id),
+                    exclure=membre.id)
         return super().write(vals)
 
     def unlink(self):
         self._check_mission_locked(self.mapped("mission_id"))
         return super().unlink()
+
+    # --- La déclaration de retour, missionnaire par missionnaire ------
+    # Le retour est UNE déclaration pour la mission (tout le monde rentre
+    # ensemble), mais chacun répond de SES montants et de SES pièces. Sans
+    # état par membre, la RH ne pouvait que tout accepter ou tout renvoyer :
+    # un seul agent en faute bloquait ses collègues.
+    retour_state = fields.Selection([
+        ("a_declarer", "À déclarer"),
+        ("declare", "Déclarée"),
+        ("valide", "Validée"),
+        ("a_corriger", "À corriger"),
+    ], string="Déclaration", default="a_declarer", copy=False, required=True,
+        help="Où en est la déclaration de retour de CE missionnaire.")
+    retour_motif = fields.Text(
+        string="Motif du renvoi", readonly=True, copy=False,
+        help="Renseigné par la RH quand elle renvoie la déclaration ; "
+             "l'agent le lit sur son portail.")
+    retour_valide_par_id = fields.Many2one(
+        "res.users", string="Validée par", readonly=True, copy=False)
+    retour_date_validation = fields.Datetime(
+        string="Validée le", readonly=True, copy=False)
+
+    def _marquer_declaree(self):
+        """L'agent vient de déposer sa déclaration : elle passe à la RH.
+
+        Une déclaration DÉJÀ validée ne repart pas en arrière — la RH a
+        tranché, c'est elle qui rouvrirait le dossier s'il le fallait.
+        """
+        self.filtered(
+            lambda m: m.retour_state in ("a_declarer", "a_corriger")
+        ).write({"retour_state": "declare", "retour_motif": False})
+
+    def action_declaration_validee(self):
+        """La RH accepte la déclaration de ce missionnaire."""
+        for membre in self:
+            if membre.retour_state == "valide":
+                raise UserError(_(
+                    "La déclaration de %s est déjà validée.",
+                    membre.nom_affiche or ""))
+            if membre.mission_id.state != "returned":
+                raise UserError(_(
+                    "Le retour de la mission n'est pas encore déclaré : "
+                    "il n'y a rien à valider."))
+            incompletes = membre.indemnite_ids._incompletes()
+            if incompletes:
+                raise UserError(_(
+                    "%(qui)s n'a pas complété : %(quoi)s.\n\n"
+                    "Chaque indemnité à justifier demande le montant "
+                    "réellement dépensé ET la pièce. Renvoyez-lui la "
+                    "déclaration, ou complétez-la vous-même avant de "
+                    "valider.",
+                    qui=membre.nom_affiche or "",
+                    quoi=", ".join(incompletes.mapped("type_id.name"))))
+            membre.write({
+                "retour_state": "valide",
+                "retour_motif": False,
+                "retour_valide_par_id": self.env.uid,
+                "retour_date_validation": fields.Datetime.now(),
+            })
+            membre.mission_id.message_post(body=_(
+                "Déclaration de %(qui)s validée par %(par)s.",
+                qui=membre.nom_affiche or "", par=self.env.user.name))
+
+    def action_declaration_renvoyee(self, motif=None):
+        """La RH renvoie la déclaration à l'agent (motif OBLIGATOIRE)."""
+        if not (motif and motif.strip()):
+            raise UserError(_("Le motif du renvoi est obligatoire."))
+        for membre in self:
+            if membre.mission_id.state != "returned":
+                raise UserError(_(
+                    "Le retour de la mission n'est pas encore déclaré."))
+            membre.write({
+                "retour_state": "a_corriger",
+                "retour_motif": motif.strip(),
+                "retour_valide_par_id": False,
+                "retour_date_validation": False,
+            })
+            membre.mission_id.message_post(body=_(
+                "Déclaration de %(qui)s renvoyée pour correction par "
+                "%(par)s : %(motif)s",
+                qui=membre.nom_affiche or "", par=self.env.user.name,
+                motif=motif.strip()))
+
+    def action_ouvrir_renvoi(self):
+        """Ouvre la fenêtre de motif — le renvoi ne se fait jamais sans."""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Renvoyer la déclaration"),
+            "res_model": "gm.decision.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {
+                "default_mission_id": self.mission_id.id,
+                "default_membre_id": self.id,
+                "default_action": "renvoi_declaration",
+            },
+        }
+
+    def action_imprimer_decompte(self):
+        """Le décompte de CE missionnaire seul, pour le service RH.
+
+        C'est exactement le document que l'agent tire depuis son portail :
+        même rapport, même gabarit. Seul le point d'entrée est nouveau —
+        la RH n'avait aucun moyen de sortir la fiche d'un agent précis
+        sans imprimer celle de toute l'équipe.
+
+        Le membre voulu voyage dans le contexte : le client web le
+        recopie dans l'URL du rapport, et le contrôleur le réinjecte
+        avant le rendu.
+        """
+        self.ensure_one()
+        if self.mission_id.state == "draft":
+            raise UserError(_(
+                "La mission %s est encore en brouillon : le décompte "
+                "n'est arrêté qu'à la soumission.", self.mission_id.name
+                or ""))
+        return self.env.ref(
+            "gestion_mission.action_report_gm_decompte"
+        ).with_context(
+            gm_decompte_membre_id=self.id
+        ).report_action(self.mission_id)

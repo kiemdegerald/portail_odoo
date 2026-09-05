@@ -13,6 +13,7 @@ Deux situations, et le répertoire couvre les deux :
 * le chauffeur n'est **pas salarié** — on saisit son compte ici.
 """
 from odoo import api, fields, models, _
+from .gm_perdiem import poser_index_partiels
 from odoo.exceptions import ValidationError
 
 
@@ -71,3 +72,42 @@ class GmChauffeur(models.Model):
         ("name_company_uniq", "unique(name, company_id)",
          "Ce chauffeur est déjà enregistré pour cette société."),
     ]
+
+    # PostgreSQL considère que deux NULL sont DIFFÉRENTS : la contrainte
+    # ci-dessus ne voit donc jamais un doublon quand la société est vide.
+    def _refuser_doublon(self, nom, societe, exclure=None):
+        """Contrôle AVANT écriture : l'index part à l'insertion, donc avant
+        tout contrôle Python, et son message est illisible."""
+        domaine = [("name", "=ilike", nom or ""),
+                   ("company_id", "=", societe or False)]
+        if exclure:
+            domaine = [("id", "!=", exclure)] + domaine
+        if self.search_count(domaine):
+            raise ValidationError(_(
+                "Un chauffeur nommé « %s » est déjà enregistré. Complétez "
+                "sa fiche plutôt que d'en créer une seconde.", nom))
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            self._refuser_doublon(
+                vals.get("name"),
+                vals.get("company_id", self.env.company.id))
+        return super().create(vals_list)
+
+    def write(self, vals):
+        if "name" in vals or "company_id" in vals:
+            for chauffeur in self:
+                self._refuser_doublon(
+                    vals.get("name", chauffeur.name),
+                    vals.get("company_id", chauffeur.company_id.id),
+                    exclure=chauffeur.id)
+        return super().write(vals)
+
+    def init(self):
+        super().init()
+        poser_index_partiels(
+            self.env.cr, "gm_chauffeur",
+            "gm_chauffeur_nom_societe_uniq",
+            "gm_chauffeur_nom_sans_societe_uniq",
+            ["name", "company_id"])

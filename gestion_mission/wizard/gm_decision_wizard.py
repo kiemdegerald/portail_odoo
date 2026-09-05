@@ -11,10 +11,15 @@ class GmDecisionWizard(models.TransientModel):
 
     mission_id = fields.Many2one(
         "gm.mission", required=True, readonly=True)
+    membre_id = fields.Many2one(
+        "gm.mission.membre", string="Missionnaire", readonly=True,
+        help="Renseigné quand la décision porte sur la déclaration de "
+             "retour d'UN missionnaire, et non sur la demande entière.")
     action = fields.Selection([
         ("refuse", "Refuser la demande"),
         ("send_back", "Renvoyer pour correction"),
         ("cancel", "Annuler la mission"),
+        ("renvoi_declaration", "Renvoyer la déclaration de retour"),
     ], string="Décision", required=True, readonly=True)
     comment = fields.Text(
         string="Commentaire", required=True,
@@ -24,7 +29,9 @@ class GmDecisionWizard(models.TransientModel):
         self.ensure_one()
         if not (self.comment and self.comment.strip()):
             raise UserError(_("Le commentaire est obligatoire."))
-        if self.action == "refuse":
+        if self.action == "renvoi_declaration":
+            self.membre_id.action_declaration_renvoyee(motif=self.comment)
+        elif self.action == "refuse":
             self.mission_id.action_refuse_step(comment=self.comment)
         elif self.action == "cancel":
             self.mission_id.action_cancel(reason=self.comment)

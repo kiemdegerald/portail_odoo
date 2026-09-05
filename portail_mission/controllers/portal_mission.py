@@ -221,6 +221,13 @@ class PortailMission(PortailCommon):
         else:
             vals["transport"] = transport
 
+        # Une plaque n'a de sens que pour un véhicule de service : pour
+        # tout autre transport on l'efface, sinon elle resterait en base
+        # et s'imprimerait sur l'ordre de mission.
+        vals["immatriculation"] = (
+            (post.get("immatriculation") or "").strip() or False
+            if transport == "service" else False)
+
         dates = {}
         for field, label in (("date_depart", _("date de départ")),
                              ("date_retour", _("date de retour"))):
@@ -249,13 +256,15 @@ class PortailMission(PortailCommon):
         """Valeurs de pré-remplissage du formulaire."""
         if not mission:
             return {"objet": "", "destination": "", "zone_id": "",
-                    "transport": "service", "date_depart": "",
-                    "date_retour": "", "description": "", "frais": []}
+                    "transport": "service", "immatriculation": "",
+                    "date_depart": "", "date_retour": "",
+                    "description": "", "frais": []}
         return {
             "objet": mission.objet or "",
             "destination": mission.destination or "",
             "zone_id": str(mission.zone_id.id) if mission.zone_id else "",
             "transport": mission.transport or "service",
+            "immatriculation": mission.immatriculation or "",
             "date_depart": mission.date_depart.strftime("%Y-%m-%d")
                            if mission.date_depart else "",
             "date_retour": mission.date_retour.strftime("%Y-%m-%d")
@@ -284,6 +293,7 @@ class PortailMission(PortailCommon):
             "destination": post.get("destination") or "",
             "zone_id": post.get("zone_id") or "",
             "transport": post.get("transport") or "service",
+            "immatriculation": post.get("immatriculation") or "",
             "date_depart": post.get("date_depart") or "",
             "date_retour": post.get("date_retour") or "",
             "description": post.get("description") or "",
@@ -401,8 +411,8 @@ class PortailMission(PortailCommon):
                 and not (mission.state == "validated"
                          and mission.employee_id in employees)),
             "mes_pieces_manquantes": len(mission.indemnite_ids.filtered(
-                lambda l: l.a_justifier and not l.justificatif
-                and l.membre_id.employee_id in employees)),
+                lambda l: l.membre_id.employee_id
+                in employees)._incompletes()),
             "can_decide_now": can_decide_now,
             # Le tableau des membres suit le MÊME réglage que la fiche
             # imprimée : si la banque a choisi que chacun ne voie que sa
@@ -422,6 +432,10 @@ class PortailMission(PortailCommon):
             # trop-perçu du groupe entier n'est pas celui du lecteur.
             "totaux_global": not self._membre_du_decompte(
                 mission, employees),
+            # Sa propre déclaration : l'état où la RH l'a laissée, et le
+            # motif si elle la lui a renvoyée.
+            "ma_declaration": mission.membre_ids.filtered(
+                lambda m: m.employee_id in employees)[:1],
             "page_name": "team_mission" if as_validator else "mission",
         }
         return request.render("portail_mission.portal_my_mission_detail", values)
@@ -650,6 +664,34 @@ class PortailMission(PortailCommon):
                     vals["justificatif_filename"] = ancien[1]
             request.env["gm.mission.frais"].sudo().create(vals)
 
+    def _enregistrer_depenses(self, lignes, error):
+        """Le montant réellement dépensé, saisi en regard du montant reçu.
+
+        Sur TOUTES ses lignes : une indemnité forfaitaire lui est
+        acquise, mais rien n'empêche l'agent de dire ce qu'elle lui a
+        réellement coûté. Seules les lignes « à justifier » l'exigent —
+        c'est le contrôle métier qui le vérifie, pas la saisie.
+        """
+        form = request.httprequest.form
+        for ligne in lignes:
+            brut = (form.get("indem_depense_%s" % ligne.id) or "").strip()
+            brut = brut.replace(",", ".").replace(" ", "")
+            if not brut:
+                continue
+            try:
+                valeur = float(brut)
+            except ValueError:
+                error["depenses"] = _(
+                    "« %s » : le montant dépensé est invalide.",
+                    ligne.type_id.name or "")
+                return
+            if valeur < 0:
+                error["depenses"] = _(
+                    "« %s » : le montant dépensé ne peut pas être négatif.",
+                    ligne.type_id.name or "")
+                return
+            ligne.sudo().montant_depense = valeur
+
     def _enregistrer_justificatifs(self, lignes, error):
         """Dépose les pièces sur les lignes d'indemnité du missionnaire.
 
@@ -763,13 +805,19 @@ class PortailMission(PortailCommon):
             return request.redirect("/my/missions")
         employees = self._get_portal_employees()
         est_chef = mission.employee_id in employees
+        # Une déclaration VALIDÉE par la RH est close : l'agent ne la
+        # retouche plus. La RH garde la main depuis le back-office.
         mes_lignes = mission.indemnite_ids.filtered(
-            lambda l: l.membre_id.employee_id in employees)
+            lambda l: l.membre_id.employee_id in employees
+            and l.membre_id.retour_state != "valide")
 
         error = {}
         if request.httprequest.method == "POST":
             # Les justificatifs d'indemnité : chacun ne dépose que sur SES
             # lignes — le filtre ci-dessus est la seule porte.
+            # Le montant dépensé d'abord : la pièce qui suit vient
+            # prouver ce chiffre-là.
+            self._enregistrer_depenses(mes_lignes, error)
             self._enregistrer_justificatifs(mes_lignes, error)
             # Les visas prouvent les dates réelles : c'est le chef qui les
             # saisit, c'est donc lui qui dépose les pièces.
@@ -787,6 +835,9 @@ class PortailMission(PortailCommon):
                 if not error:
                     if mission.state == "returned":
                         self._apply_frais_reels(mission, lignes, mes_membres)
+                    # Sa déclaration part à la RH : c'est ce dépôt-là qui
+                    # la fait passer de « à déclarer » à « déclarée ».
+                    mes_membres.sudo()._marquer_declaree()
                     return request.redirect(
                         "/my/missions/%s?success=justificatifs" % mission.id)
                 post = dict(post)
@@ -807,6 +858,10 @@ class PortailMission(PortailCommon):
                     # revient alors seulement compléter ses pièces.
                     if mission.state == "validated":
                         mission.sudo().action_declare_return()
+                    else:
+                        # retour déjà déclaré : le chef revient compléter,
+                        # sa déclaration repart à la RH.
+                        mes_membres.sudo()._marquer_declaree()
                     self._apply_frais_reels(mission, lignes, mes_membres)
                     return request.redirect(
                         "/my/missions/%s?success=returned" % mission.id)

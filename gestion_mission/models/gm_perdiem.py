@@ -1,6 +1,38 @@
 # -*- coding: utf-8 -*-
+import logging
+
 from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError
+
+_logger = logging.getLogger(__name__)
+
+
+def poser_index_partiels(cr, table, index_avec, index_sans, colonnes,
+                         colonne_nulle="company_id"):
+    """Deux index uniques partiels : l'un quand la colonne est renseignée,
+    l'autre quand elle est vide. Sans cela, deux lignes « toutes sociétés »
+    ne sont jamais vues comme un doublon.
+
+    Un doublon DÉJÀ présent en base ferait échouer la création de l'index :
+    on trace un avertissement plutôt que de bloquer la mise à jour du
+    module — la RH devra alors nettoyer.
+    """
+    sans = ", ".join(c for c in colonnes if c != colonne_nulle)
+    for nom, sql in (
+        (index_avec, "CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s (%s) "
+                     "WHERE %s IS NOT NULL"
+                     % (index_avec, table, ", ".join(colonnes), colonne_nulle)),
+        (index_sans, "CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s (%s) "
+                     "WHERE %s IS NULL"
+                     % (index_sans, table, sans, colonne_nulle)),
+    ):
+        try:
+            with cr.savepoint():
+                cr.execute(sql)
+        except Exception as exc:            # doublon déjà en base
+            _logger.warning(
+                "Index d'unicité %s non créé (doublons existants ?) : %s",
+                nom, exc)
 
 # Catégories de repli si la grille salariale (modèle Studio
 # x_grille_salariale) n'existe pas sur la base (portabilité : autre client).
@@ -81,6 +113,46 @@ class GmIndemniteType(models.Model):
          "Ce type d'indemnité existe déjà."),
     ]
 
+    # PostgreSQL considère que deux NULL sont DIFFÉRENTS : la contrainte
+    # ci-dessus ne voit donc jamais un doublon quand la société est vide —
+    # or « vide = commun à toutes les sociétés » est l'usage recommandé.
+    # D'où ces deux verrous : le contrôle Python donne le message lisible,
+    # l'index partiel tient même pour un import ou un écrit direct.
+    def _refuser_doublon(self, nom, societe, exclure=None):
+        """Contrôle AVANT écriture. L'index part à l'insertion, donc avant
+        tout contrôle Python : sans cela, l'utilisateur lit un message
+        PostgreSQL brut au lieu d'une phrase."""
+        domaine = [("name", "=ilike", nom or ""),
+                   ("company_id", "=", societe or False)]
+        if exclure:
+            domaine = [("id", "!=", exclure)] + domaine
+        if self.search_count(domaine):
+            raise ValidationError(_(
+                "Le type d'indemnité « %s » existe déjà.", nom))
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            self._refuser_doublon(vals.get("name"), vals.get("company_id"))
+        return super().create(vals_list)
+
+    def write(self, vals):
+        if "name" in vals or "company_id" in vals:
+            for type_ind in self:
+                self._refuser_doublon(
+                    vals.get("name", type_ind.name),
+                    vals.get("company_id", type_ind.company_id.id),
+                    exclure=type_ind.id)
+        return super().write(vals)
+
+    def init(self):
+        super().init()
+        poser_index_partiels(
+            self.env.cr, "gm_indemnite_type",
+            "gm_indemnite_type_nom_societe_uniq",
+            "gm_indemnite_type_nom_sans_societe_uniq",
+            ["name", "company_id"])
+
 
 class GmPerdiemRate(models.Model):
     """Barème des indemnités journalières : zone de mission × catégorie
@@ -127,6 +199,57 @@ class GmPerdiemRate(models.Model):
          "type d'indemnité."),
     ]
 
+    # PostgreSQL considère que deux NULL sont DIFFÉRENTS : la contrainte
+    # ci-dessus ne voit donc jamais un doublon quand la société est vide —
+    # or « vide = commun à toutes les sociétés » est l'usage recommandé.
+    # D'où ces deux verrous : le contrôle Python donne le message lisible,
+    # l'index partiel tient même pour un import ou un écrit direct.
+    def _refuser_doublon(self, zone_id, categorie, type_id, societe,
+                         exclure=None):
+        domaine = [("zone_id", "=", zone_id or False),
+                   ("categorie", "=", categorie),
+                   ("type_id", "=", type_id or False),
+                   ("company_id", "=", societe or False)]
+        if exclure:
+            domaine = [("id", "!=", exclure)] + domaine
+        if self.search_count(domaine):
+            zone = self.env["gm.mission.zone"].browse(zone_id)
+            type_ind = self.env["gm.indemnite.type"].browse(type_id)
+            raise ValidationError(_(
+                "Un barème existe déjà pour « %(zone)s », la catégorie "
+                "« %(cat)s » et le type « %(type)s ». Corrigez la ligne "
+                "existante plutôt que d'en créer une seconde : le système "
+                "n'en retiendrait qu'une, et pas forcément celle que vous "
+                "venez de saisir.",
+                zone=zone.name, cat=categorie, type=type_ind.name))
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            self._refuser_doublon(vals.get("zone_id"), vals.get("categorie"),
+                                  vals.get("type_id"), vals.get("company_id"))
+        return super().create(vals_list)
+
+    def write(self, vals):
+        champs = ("zone_id", "categorie", "type_id", "company_id")
+        if any(c in vals for c in champs):
+            for ligne in self:
+                self._refuser_doublon(
+                    vals.get("zone_id", ligne.zone_id.id),
+                    vals.get("categorie", ligne.categorie),
+                    vals.get("type_id", ligne.type_id.id),
+                    vals.get("company_id", ligne.company_id.id),
+                    exclure=ligne.id)
+        return super().write(vals)
+
+    def init(self):
+        super().init()
+        poser_index_partiels(
+            self.env.cr, "gm_perdiem_rate",
+            "gm_perdiem_rate_croisement_societe_uniq",
+            "gm_perdiem_rate_croisement_sans_societe_uniq",
+            ["zone_id", "categorie", "type_id", "company_id"])
+
     @api.constrains("montant_jour")
     def _check_montant(self):
         for rate in self:
@@ -145,9 +268,16 @@ class GmPerdiemRate(models.Model):
             ("zone_id", "=", zone.id),
             ("categorie", "=", categorie),
             ("company_id", "in", [company.id, False]),
-        ], order="company_id desc")
+        ])
+        # Le tri se fait en PYTHON, et c'est essentiel : sous PostgreSQL,
+        # « ORDER BY company_id DESC » place les NULL en TÊTE. La ligne
+        # COMMUNE passait donc devant la ligne propre à la société, et
+        # c'est elle qui était retenue — exactement l'inverse de la règle
+        # voulue. Ici, 0 avant 1 : la ligne de la société l'emporte.
         retenues = {}
-        for ligne in lignes:
+        for ligne in lignes.sorted(lambda l: (l.type_id.sequence,
+                                              l.type_id.id,
+                                              0 if l.company_id else 1)):
             retenues.setdefault(ligne.type_id.id, ligne)
         return self.browse([l.id for l in retenues.values()]).sorted(
             lambda l: (l.type_id.sequence, l.type_id.id))

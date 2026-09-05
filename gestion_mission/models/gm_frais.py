@@ -45,6 +45,17 @@ class GmMissionFrais(models.Model):
         help="Facture, reçu, billet... Exigé sur les frais réels pour "
              "pouvoir clôturer la mission.")
     justificatif_filename = fields.Char(string="Nom du fichier")
+    piece_manquante = fields.Boolean(
+        string="Pièce manquante", compute="_compute_piece_manquante",
+        help="Un frais RÉEL sans justificatif empêche la clôture de la "
+             "mission. Le signaler ici évite de le découvrir au moment de "
+             "clôturer, sans savoir de qui il vient.")
+
+    @api.depends("type_frais", "justificatif")
+    def _compute_piece_manquante(self):
+        for frais in self:
+            frais.piece_manquante = (frais.type_frais == "reel"
+                                     and not frais.justificatif)
 
     @api.depends("mission_id.name", "membre_id.nom_affiche", "description")
     def _compute_display_name(self):
