@@ -9,29 +9,21 @@
             <form string="Campagne d'évaluation">
                 <header>
                     <button name="action_lancer" type="object"
-                            string="Ouvrir la fixation des objectifs"
+                            string="Lancer l'évaluation"
                             class="btn-primary"
                             invisible="state != 'draft'"
-                            confirm="Générer les évaluations et ouvrir la fixation des objectifs aux responsables ?"/>
+                            confirm="Générer les évaluations et ouvrir la notation ? Les agents sans objectif pour l'exercice seront signalés, mais l'évaluation s'ouvrira quand même."/>
                     <button name="action_lancer" type="object"
                             string="Générer les manquantes"
-                            invisible="state not in ('objectifs', 'running')"
-                            help="Relance la génération après avoir élargi le ciblage. Les agents déjà servis sont ignorés."/>
-                    <button name="action_ouvrir_evaluation" type="object"
-                            string="Ouvrir l'évaluation" class="btn-primary"
-                            invisible="state != 'objectifs'"
-                            confirm="Fermer la fixation des objectifs et lancer l'évaluation ? Les agents sans objectif seront signalés, mais l'évaluation s'ouvrira quand même."/>
-                    <button name="action_rouvrir_objectifs" type="object"
-                            string="Rouvrir la fixation des objectifs"
                             invisible="state != 'running'"
-                            help="Pour un responsable en retard, ou un agent arrivé en cours d'année."/>
+                            help="Relance la génération après avoir élargi le ciblage. Les agents déjà servis sont ignorés."/>
                     <button name="action_cloturer" type="object"
                             string="Clôturer" class="btn-primary"
                             invisible="state != 'running'"
                             confirm="Clôturer la campagne ?"/>
                     <button name="action_annuler" type="object"
                             string="Annuler la campagne"
-                            invisible="state not in ('draft', 'objectifs', 'running')"/>
+                            invisible="state not in ('draft', 'running')"/>
                     <button name="action_remettre_brouillon" type="object"
                             string="Remettre en brouillon"
                             invisible="state != 'cancelled'"/>
@@ -92,21 +84,20 @@
                             <field name="exercice" readonly="state != 'draft'"/>
                             <field name="company_id" groups="base.group_multi_company"
                                    readonly="state != 'draft'"/>
-                            <separator string="1. Fixation des objectifs (début d'exercice)"
+                            <separator string="Fixation des objectifs (début d'exercice)"
                                        colspan="2"/>
-                            <field name="date_objectifs_debut"
-                                   readonly="state in ('closed', 'cancelled')"/>
-                            <field name="date_objectifs_fin"
-                                   readonly="state in ('closed', 'cancelled')"/>
+                            <field name="periode_objectifs_id" readonly="1"/>
                             <field name="objectifs_ouverts" invisible="1"/>
                             <div colspan="2" class="text-muted">
-                                Période pendant laquelle les responsables
-                                fixent les objectifs de leurs collaborateurs,
-                                depuis leur portail. Elle doit se terminer
-                                avant l'ouverture de l'évaluation. En dehors,
-                                ils ne peuvent plus y toucher.
+                                Les objectifs se fixent en début d'exercice,
+                                dans leur propre période — menu
+                                <b>Fixation des objectifs</b>. La campagne les
+                                retrouve par l'exercice. Si un agent n'en a
+                                pas, elle le signale au lancement sans
+                                bloquer : rouvrez la période pour que son
+                                responsable les renseigne.
                             </div>
-                            <separator string="2. Évaluation (fin d'exercice)"
+                            <separator string="Évaluation (fin d'exercice)"
                                        colspan="2"/>
                             <field name="date_debut" readonly="state != 'draft'"/>
                             <field name="date_fin"/>
@@ -250,8 +241,6 @@
                 <field name="name"/>
                 <field name="exercice"/>
                 <field name="department_ids"/>
-                <filter string="Fixation des objectifs" name="objectifs"
-                        domain="[('state', '=', 'objectifs')]"/>
                 <filter string="Évaluation en cours" name="running"
                         domain="[('state', '=', 'running')]"/>
                 <filter string="Clôturées" name="closed"

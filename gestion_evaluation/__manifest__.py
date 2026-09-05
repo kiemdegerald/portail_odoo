@@ -27,7 +27,7 @@ comportement natif (feedbacks, compétences, entretien, 360°).
     "author": "LICELI Technologies",
     "website": "https://www.liceli-technologies.com",
     "category": "Human Resources",
-    "version": "17.0.0.53.0",
+    "version": "17.0.0.58.0",
     "license": "LGPL-3",
     "depends": [
         "hr",
@@ -45,6 +45,7 @@ comportement natif (feedbacks, compétences, entretien, 360°).
         "views/ev_grille_views.xml",
         "views/ev_circuit_views.xml",
         "views/ev_settings_views.xml",
+        "views/ev_periode_objectifs_views.xml",
         "views/ev_campagne_views.xml",
         "views/hr_appraisal_views.xml",
         "views/hr_appraisal_goal_views.xml",

@@ -43,6 +43,10 @@ SUCCESS_MESSAGES = {
     "sent_back": "L'évaluation a été renvoyée pour correction.",
     "goal_added": "L'objectif a été ajouté.",
     "goal_removed": "L'objectif a été retiré.",
+    "objectif_fixe": "L'objectif a été fixé. Votre collaborateur le voit "
+                     "sur son portail.",
+    "objectif_retire": "L'objectif a été retiré.",
+    "avancement_enregistre": "Votre avancement a été enregistré.",
     "progress_saved": "L'avancement de vos objectifs a été enregistré.",
     "interview_set": "La date de l'entretien a été enregistrée. Le "
                      "collaborateur la voit sur sa fiche.",
@@ -75,9 +79,48 @@ class PortailEvaluation(PortailCommon):
         return bool(request.env["hr.appraisal"].sudo().search_count(
             self._team_appraisals_domain(employees)))
 
+    def _ev_periodes_objectifs(self):
+        """Les périodes d'objectifs qui concernent MES collaborateurs.
+
+        On ne s'appuie sur aucune évaluation : les objectifs se fixent en
+        début d'exercice, des mois avant qu'une campagne n'existe.
+        """
+        employees = self._get_portal_employees()
+        Periode = request.env["ev.periode.objectifs"].sudo()
+        if not employees:
+            return Periode
+        subordonnes = request.env["hr.employee"].sudo().search(
+            [("parent_id", "in", employees.ids)])
+        if not subordonnes:
+            return Periode
+        periodes = Periode.search([
+            ("state", "in", ("open", "closed")),
+            ("company_id", "in", subordonnes.company_id.ids),
+        ])
+        # Une période dont le ciblage ne retient aucun de mes
+        # collaborateurs n'a rien à faire sur mon écran.
+        return periodes.filtered(
+            lambda p: p._get_employees_cibles() & subordonnes)
+
+    def _est_responsable_objectifs(self):
+        return bool(self._ev_periodes_objectifs())
+
+    def _ev_mes_periodes(self):
+        """Les périodes au titre desquelles J'AI des objectifs."""
+        employees = self._get_portal_employees()
+        Periode = request.env["ev.periode.objectifs"].sudo()
+        if not employees:
+            return Periode
+        objectifs = request.env["hr.appraisal.goal"].sudo().search([
+            ("employee_id", "in", employees.ids),
+            ("ev_periode_id", "!=", False),
+        ])
+        return objectifs.ev_periode_id
+
     def _prepare_portal_layout_values(self):
         values = super()._prepare_portal_layout_values()
         values["portail_is_evaluateur"] = self._est_evaluateur()
+        values["portail_has_objectifs"] = self._est_responsable_objectifs()
         return values
 
     def _prepare_home_portal_values(self, counters):
@@ -91,7 +134,31 @@ class PortailEvaluation(PortailCommon):
             values["team_appraisal_count"] = request.env["hr.appraisal"].sudo(
             ).search_count(self._team_appraisals_domain(employees)) \
                 if employees else 0
+        if "objectifs_count" in counters:
+            # Ce qui compte pour le responsable, ce n'est pas le nombre de
+            # périodes : c'est le nombre de collaborateurs qu'il n'a pas
+            # encore servis.
+            values["objectifs_count"] = sum(
+                len(self._ev_collaborateurs_sans_objectif(p))
+                for p in self._ev_periodes_objectifs().filtered("ouverte"))
+        if "mes_objectifs_count" in counters:
+            employees = self._get_portal_employees()
+            values["mes_objectifs_count"] = request.env[
+                "hr.appraisal.goal"].sudo().search_count([
+                    ("employee_id", "in", employees.ids),
+                    ("ev_periode_id", "!=", False)]) if employees else 0
         return values
+
+    def _ev_mes_collaborateurs(self, periode):
+        """Mes collaborateurs directs visés par cette période."""
+        employees = self._get_portal_employees()
+        if not employees:
+            return request.env["hr.employee"].sudo()
+        return periode._get_employees_cibles().filtered(
+            lambda e: e.parent_id in employees)
+
+    def _ev_collaborateurs_sans_objectif(self, periode):
+        return self._ev_mes_collaborateurs(periode) - periode.goal_ids.employee_id
 
     # ------------------------------------------------------------------
     # Helpers
@@ -285,6 +352,134 @@ class PortailEvaluation(PortailCommon):
             raise AccessError(_(
                 "Vous n'êtes pas évaluateur de cette évaluation."))
         return appraisal
+
+    # ------------------------------------------------------------------
+    # Fixation des objectifs — sans aucune évaluation
+    # ------------------------------------------------------------------
+    @http.route(["/my/mes-objectifs"], type="http", auth="user",
+                website=True, methods=["GET", "POST"])
+    def portal_mes_objectifs_agent(self, **post):
+        """Ce que l'agent voit : la commande qu'on lui a passée pour
+        l'exercice, et où il en est.
+
+        Sans cet écran, un objectif fixé en janvier restait invisible
+        jusqu'à l'ouverture de la campagne, en fin d'année.
+        """
+        periodes = self._ev_mes_periodes()
+        if not periodes:
+            return request.redirect("/my")
+        employees = self._get_portal_employees()
+        moi = employees[:1]
+        error = {}
+        success = None
+
+        if request.httprequest.method == "POST":
+            periode = periodes.filtered(
+                lambda p: str(p.id) == (post.get("periode_id") or ""))
+            if not periode:
+                error["global"] = _("Période inconnue.")
+            else:
+                try:
+                    periode._ev_objectif_avancement(moi, post)
+                    return request.redirect(
+                        "/my/mes-objectifs?success=avancement_enregistre")
+                except (UserError, ValidationError) as exc:
+                    error["global"] = exc.args[0] if exc.args else str(exc)
+
+        if post.get("success"):
+            success = SUCCESS_MESSAGES.get(post["success"])
+
+        lignes = [{
+            "periode": periode,
+            "objectifs": periode._ev_objectifs_de(moi),
+        } for periode in periodes.sorted("exercice", reverse=True)]
+
+        return request.render(
+            "portail_evaluation.portal_mes_objectifs_agent", {
+                "lignes": lignes,
+                "niveaux": request.env["hr.appraisal.goal"]
+                ._fields["progression"].selection,
+                "error": error,
+                "success_message": success,
+                "page_name": "mes_objectifs",
+            })
+
+    @http.route(["/my/objectifs"], type="http", auth="user", website=True,
+                methods=["GET", "POST"])
+    def portal_mes_objectifs(self, **post):
+        """L'écran du responsable : il fixe les objectifs de ses
+        collaborateurs, au titre de la période ouverte par la RH.
+
+        Rien ici ne dépend d'une évaluation : les objectifs se fixent en
+        début d'exercice, la campagne d'évaluation viendra des mois plus
+        tard les reprendre par l'exercice.
+        """
+        periodes = self._ev_periodes_objectifs()
+        if not periodes:
+            return request.redirect("/my")
+        error = {}
+        success = None
+
+        if request.httprequest.method == "POST":
+            periode = periodes.filtered(
+                lambda p: str(p.id) == (post.get("periode_id") or ""))
+            if not periode:
+                error["global"] = _("Période inconnue.")
+            else:
+                try:
+                    action = post.get("action")
+                    if action == "goal_add":
+                        agent = self._ev_mes_collaborateurs(periode).filtered(
+                            lambda e: str(e.id) == (post.get("employee_id")
+                                                    or ""))
+                        if not agent:
+                            raise UserError(_(
+                                "Cet agent ne fait pas partie de vos "
+                                "collaborateurs pour cette période."))
+                        # Le responsable qui passe la commande, c'est
+                        # l'utilisateur connecté — pas forcément le
+                        # supérieur enregistré sur la fiche.
+                        moi = self._get_portal_employees()[:1]
+                        periode._ev_objectif_creer(
+                            agent, post.get("goal_name"),
+                            echeance=(post.get("goal_deadline") or "").strip()
+                            or None,
+                            description=self._texte_vers_html(
+                                post.get("goal_description")),
+                            manager=agent.parent_id or moi)
+                        return request.redirect(
+                            "/my/objectifs?success=objectif_fixe")
+                    if action == "goal_remove":
+                        periode._ev_objectif_supprimer(post.get("goal_id"))
+                        return request.redirect(
+                            "/my/objectifs?success=objectif_retire")
+                except (UserError, ValidationError) as exc:
+                    error["global"] = exc.args[0] if exc.args else str(exc)
+
+        if post.get("success"):
+            success = SUCCESS_MESSAGES.get(post["success"])
+
+        lignes = []
+        for periode in periodes.sorted(lambda p: (p.state != "open",
+                                                  p.exercice), reverse=False):
+            agents = self._ev_mes_collaborateurs(periode)
+            lignes.append({
+                "periode": periode,
+                "motif_ferme": periode._ev_motif_ferme(),
+                "agents": [{
+                    "employee": agent,
+                    "objectifs": periode._ev_objectifs_de(agent),
+                } for agent in agents.sorted("name")],
+                "sans_objectif": len(
+                    self._ev_collaborateurs_sans_objectif(periode)),
+            })
+
+        return request.render("portail_evaluation.portal_mes_objectifs", {
+            "lignes": lignes,
+            "error": error,
+            "success_message": success,
+            "page_name": "objectifs",
+        })
 
     @http.route(["/my/team/evaluations",
                  "/my/team/evaluations/page/<int:page>"],

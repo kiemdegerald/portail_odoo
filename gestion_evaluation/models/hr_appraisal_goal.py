@@ -18,11 +18,26 @@ class HrAppraisalGoal(models.Model):
         ondelete="set null",
         help="Campagne d'évaluation au titre de laquelle cet objectif a été "
              "fixé. Vide pour un objectif hors campagne.")
+    # L'objectif se fixe en DÉBUT d'exercice, au titre d'une PÉRIODE —
+    # des mois avant qu'une campagne d'évaluation n'existe. Le lien à la
+    # campagne reste, pour les objectifs saisis depuis une évaluation.
+    ev_periode_id = fields.Many2one(
+        "ev.periode.objectifs", string="Période d'objectifs", index=True,
+        copy=False, ondelete="set null",
+        help="Période au titre de laquelle cet objectif a été fixé.")
     ev_exercice = fields.Char(
-        string="Exercice", related="ev_campagne_id.exercice",
-        store=True, index=True,
-        help="Reprise de l'exercice de la campagne : permet de retrouver et "
-             "de regrouper les objectifs année par année.")
+        string="Exercice", compute="_compute_ev_exercice",
+        store=True, index=True, readonly=False,
+        help="Année au titre de laquelle l'objectif est fixé : reprise de "
+             "la période, ou à défaut de la campagne. C'est par elle que "
+             "la campagne d'évaluation retrouve les objectifs.")
+
+    @api.depends("ev_periode_id.exercice", "ev_campagne_id.exercice")
+    def _compute_ev_exercice(self):
+        for objectif in self:
+            objectif.ev_exercice = (objectif.ev_periode_id.exercice
+                                    or objectif.ev_campagne_id.exercice
+                                    or objectif.ev_exercice)
 
     @api.onchange("employee_id")
     def _onchange_employee_ev_campagne(self):

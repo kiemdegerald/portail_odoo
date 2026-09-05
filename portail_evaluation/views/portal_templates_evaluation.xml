@@ -19,6 +19,20 @@
                 <t t-set="config_card" t-value="True"/>
                 <t t-set="placeholder_count" t-value="'team_appraisal_count'"/>
             </t>
+            <t t-call="portal.portal_docs_entry">
+                <t t-set="title">Mes objectifs</t>
+                <t t-set="url" t-value="'/my/mes-objectifs'"/>
+                <t t-set="text">Voir les objectifs de mon exercice et déclarer mon avancement</t>
+                <t t-set="config_card" t-value="True"/>
+                <t t-set="placeholder_count" t-value="'mes_objectifs_count'"/>
+            </t>
+            <t t-if="portail_has_objectifs" t-call="portal.portal_docs_entry">
+                <t t-set="title">Objectifs de mes collaborateurs</t>
+                <t t-set="url" t-value="'/my/objectifs'"/>
+                <t t-set="text">Fixer les objectifs de l'exercice, en début d'année</t>
+                <t t-set="config_card" t-value="True"/>
+                <t t-set="placeholder_count" t-value="'objectifs_count'"/>
+            </t>
         </xpath>
     </template>
 
@@ -39,7 +53,249 @@
             <li t-if="page_name == 'team_appraisal' and appraisal" class="breadcrumb-item active">
                 <t t-esc="appraisal.employee_id.name"/>
             </li>
+            <li t-if="page_name == 'objectifs'" class="breadcrumb-item active">
+                Objectifs de mes collaborateurs
+            </li>
+            <li t-if="page_name == 'mes_objectifs'" class="breadcrumb-item active">
+                Mes objectifs
+            </li>
         </xpath>
+    </template>
+
+    <!-- ==================== Mes objectifs ==================== -->
+    <template id="portal_mes_objectifs_agent" name="Mes objectifs">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Mes objectifs</t>
+            </t>
+
+            <div t-if="success_message" class="alert alert-success mt-3" role="alert">
+                <t t-esc="success_message"/>
+            </div>
+            <div t-if="error.get('global')" class="alert alert-danger mt-3" role="alert">
+                <t t-esc="error['global']"/>
+            </div>
+
+            <t t-foreach="lignes" t-as="ligne">
+                <t t-set="periode" t-value="ligne['periode']"/>
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <strong>Exercice <t t-esc="periode.exercice"/></strong>
+                        <span class="text-muted ms-2" t-esc="periode.name"/>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small">
+                            Ces objectifs vous ont été fixés par votre
+                            responsable. Vous ne les modifiez pas — vous
+                            déclarez où vous en êtes, tout au long de
+                            l'année.
+                        </p>
+                        <form method="post" action="/my/mes-objectifs">
+                            <input type="hidden" name="csrf_token"
+                                   t-att-value="request.csrf_token()"/>
+                            <input type="hidden" name="periode_id"
+                                   t-att-value="periode.id"/>
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr class="active">
+                                        <th>Objectif</th>
+                                        <th style="width: 150px;">Fixé par</th>
+                                        <th style="width: 130px;">Échéance</th>
+                                        <th style="width: 150px;">Où j'en suis</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr t-foreach="ligne['objectifs']" t-as="obj">
+                                        <td>
+                                            <t t-esc="obj.name"/>
+                                            <div t-if="obj.description"
+                                                 class="text-muted small">
+                                                <t t-out="obj.description"/>
+                                            </div>
+                                        </td>
+                                        <td class="text-muted">
+                                            <t t-esc="obj.manager_id.name"/>
+                                        </td>
+                                        <td><span t-field="obj.deadline"/></td>
+                                        <td>
+                                            <select t-attf-name="progress_#{obj.id}"
+                                                    class="form-select form-select-sm">
+                                                <option t-foreach="niveaux" t-as="niv"
+                                                        t-att-value="niv[0]"
+                                                        t-att-selected="'selected' if obj.progression == niv[0] else None">
+                                                    <t t-esc="niv[1]"/>
+                                                </option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <button type="submit" class="btn btn-sm btn-primary">
+                                Enregistrer mon avancement
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </t>
+        </t>
+    </template>
+
+    <!-- ============ Objectifs de mes collaborateurs ============ -->
+    <template id="portal_mes_objectifs" name="Objectifs de mes collaborateurs">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title">Objectifs de mes collaborateurs</t>
+            </t>
+
+            <div t-if="success_message" class="alert alert-success mt-3" role="alert">
+                <t t-esc="success_message"/>
+            </div>
+            <div t-if="error.get('global')" class="alert alert-danger mt-3" role="alert">
+                <t t-esc="error['global']"/>
+            </div>
+
+            <t t-foreach="lignes" t-as="ligne">
+                <t t-set="periode" t-value="ligne['periode']"/>
+                <div class="card mt-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong t-esc="periode.name"/>
+                            <span class="text-muted ms-2">
+                                exercice <t t-esc="periode.exercice"/>
+                            </span>
+                        </div>
+                        <span t-if="periode.ouverte"
+                              class="badge text-bg-success">Ouverte</span>
+                        <span t-else="" class="badge text-bg-secondary">Fermée</span>
+                    </div>
+                    <div class="card-body">
+                        <!-- Quand c'est fermé, on dit POURQUOI : sinon le
+                             responsable ne sait pas s'il doit attendre ou
+                             demander une réouverture. -->
+                        <div t-if="ligne['motif_ferme']"
+                             class="alert alert-secondary" role="alert">
+                            <t t-esc="ligne['motif_ferme']"/>
+                        </div>
+                        <div t-elif="ligne['sans_objectif']"
+                             class="alert alert-warning" role="alert">
+                            <strong t-esc="ligne['sans_objectif']"/>
+                            de vos collaborateurs
+                            <t t-if="ligne['sans_objectif'] == 1">n'a</t>
+                            <t t-else="">n'ont</t>
+                            pas encore d'objectif pour cet exercice.
+                            La saisie est ouverte jusqu'au
+                            <span t-field="periode.date_fin"/>.
+                        </div>
+                        <div t-else="" class="alert alert-success" role="alert">
+                            Tous vos collaborateurs ont leurs objectifs.
+                            Vous pouvez encore les compléter jusqu'au
+                            <span t-field="periode.date_fin"/>.
+                        </div>
+
+                        <t t-if="not ligne['agents']">
+                            <p class="text-muted">
+                                Aucun de vos collaborateurs n'est visé par
+                                cette période.
+                            </p>
+                        </t>
+
+                        <t t-foreach="ligne['agents']" t-as="bloc">
+                            <t t-set="agent" t-value="bloc['employee']"/>
+                            <div class="border rounded p-3 mb-3">
+                                <h6 class="mb-1">
+                                    <t t-esc="agent.name"/>
+                                    <span t-if="agent.job_title" class="text-muted">
+                                        — <t t-esc="agent.job_title"/>
+                                    </span>
+                                </h6>
+
+                                <t t-if="not bloc['objectifs']">
+                                    <p class="text-muted small mb-2">
+                                        Aucun objectif fixé.
+                                    </p>
+                                </t>
+                                <table t-else="" class="table table-sm align-middle mb-2">
+                                    <thead>
+                                        <tr class="active">
+                                            <th>Objectif</th>
+                                            <th style="width: 140px;">Échéance</th>
+                                            <th style="width: 120px;">Avancement</th>
+                                            <th style="width: 60px;"/>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr t-foreach="bloc['objectifs']" t-as="obj">
+                                            <td>
+                                                <t t-esc="obj.name"/>
+                                                <div t-if="obj.description"
+                                                     class="text-muted small">
+                                                    <t t-out="obj.description"/>
+                                                </div>
+                                            </td>
+                                            <td><span t-field="obj.deadline"/></td>
+                                            <td>
+                                                <t t-esc="dict(obj._fields['progression'].selection).get(obj.progression, '')"/>
+                                            </td>
+                                            <td class="text-end">
+                                                <form t-if="periode.ouverte" method="post"
+                                                      action="/my/objectifs">
+                                                    <input type="hidden" name="csrf_token"
+                                                           t-att-value="request.csrf_token()"/>
+                                                    <input type="hidden" name="action" value="goal_remove"/>
+                                                    <input type="hidden" name="periode_id"
+                                                           t-att-value="periode.id"/>
+                                                    <input type="hidden" name="goal_id"
+                                                           t-att-value="obj.id"/>
+                                                    <button type="submit"
+                                                            class="btn btn-sm btn-link text-danger p-0"
+                                                            title="Retirer cet objectif">
+                                                        <i class="fa fa-trash"/>
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+
+                                <form t-if="periode.ouverte" method="post"
+                                      action="/my/objectifs" class="row g-2">
+                                    <input type="hidden" name="csrf_token"
+                                           t-att-value="request.csrf_token()"/>
+                                    <input type="hidden" name="action" value="goal_add"/>
+                                    <input type="hidden" name="periode_id"
+                                           t-att-value="periode.id"/>
+                                    <input type="hidden" name="employee_id"
+                                           t-att-value="agent.id"/>
+                                    <div class="col-md-5">
+                                        <input type="text" name="goal_name" maxlength="200"
+                                               class="form-control form-control-sm"
+                                               placeholder="Nouvel objectif — une phrase"
+                                               required="required"/>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="text" name="goal_description"
+                                               class="form-control form-control-sm"
+                                               placeholder="Précisions (facultatif)"/>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <input type="date" name="goal_deadline"
+                                               class="form-control form-control-sm"
+                                               title="Échéance"/>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <button type="submit" class="btn btn-sm btn-primary w-100">
+                                            <i class="fa fa-plus"/> Ajouter
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </t>
+                    </div>
+                </div>
+            </t>
+        </t>
     </template>
 
     <!-- ==================== Liste de mes évaluations ==================== -->

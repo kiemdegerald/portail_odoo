@@ -239,12 +239,10 @@ class HrAppraisal(models.Model):
         # Sans ce verrou, la saisie par anticipation (§14) laisserait un
         # responsable noter l'année dès le mois de janvier.
         campagne = self.sudo().ev_campagne_id
-        if campagne and campagne.state == "objectifs":
+        if campagne and campagne.state == "draft":
             return _(
-                "La campagne « %s » en est encore à la fixation des "
-                "objectifs. La notation s'ouvrira quand le service RH "
-                "aura lancé l'évaluation, en fin d'exercice.",
-                campagne.name or "")
+                "La campagne « %s » n'est pas encore lancée : il n'y a "
+                "rien à noter.", campagne.name or "")
         if colonne == "agent" and not self._ev_est_agent():
             return _(
                 "L'auto-évaluation appartient à %s : vous ne pouvez pas la "
@@ -508,9 +506,11 @@ class HrAppraisal(models.Model):
         Goal = self.env["hr.appraisal.goal"].sudo()
         for appraisal in self:
             if appraisal.ev_campagne_id and appraisal.employee_id:
+                # Par l'EXERCICE : l'objectif a été fixé en janvier au
+                # titre d'une période, la campagne n'existait pas encore.
                 objectifs = Goal.search([
                     ("employee_id", "=", appraisal.employee_id.id),
-                    ("ev_campagne_id", "=", appraisal.ev_campagne_id.id),
+                    ("ev_exercice", "=", appraisal.ev_campagne_id.exercice),
                 ])
             else:
                 objectifs = Goal
@@ -1380,7 +1380,7 @@ class HrAppraisal(models.Model):
 
         À distinguer du responsable simplement en retard : celui-là ne
         fait rien, et la banque a décidé qu'on le laisse passer avec une
-        alerte au service RH (voir ``action_ouvrir_evaluation``). Ici
+        alerte au service RH (voir ``action_lancer``). Ici
         c'est un geste délibéré : on le refuse.
         """
         self.ensure_one()

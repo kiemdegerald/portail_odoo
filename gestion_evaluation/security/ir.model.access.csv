@@ -1,6 +1,9 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_ev_campagne_all,ev.campagne.lecture,model_ev_campagne,base.group_user,1,0,0,0
 access_ev_campagne_manager,ev.campagne.manager,model_ev_campagne,hr_appraisal.group_hr_appraisal_manager,1,1,1,1
+access_ev_periode_all,ev.periode.objectifs.lecture,model_ev_periode_objectifs,base.group_user,1,0,0,0
+access_ev_periode_manager,ev.periode.objectifs.manager,model_ev_periode_objectifs,hr_appraisal.group_hr_appraisal_manager,1,1,1,1
+access_ev_objectif_wizard,ev.objectif.wizard,model_ev_objectif_wizard,hr_appraisal.group_hr_appraisal_manager,1,1,1,1
 access_ev_circuit_phase_all,ev.circuit.phase.lecture,model_ev_circuit_phase,base.group_user,1,0,0,0
 access_ev_circuit_phase_manager,ev.circuit.phase.manager,model_ev_circuit_phase,hr_appraisal.group_hr_appraisal_manager,1,1,1,1
 access_ev_evaluation_etape_all,ev.evaluation.etape.lecture,model_ev_evaluation_etape,base.group_user,1,0,0,0

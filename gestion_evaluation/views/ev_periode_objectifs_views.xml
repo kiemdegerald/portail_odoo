@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_ev_periode_tree" model="ir.ui.view">
+        <field name="name">ev.periode.objectifs.tree</field>
+        <field name="model">ev.periode.objectifs</field>
+        <field name="arch" type="xml">
+            <tree string="Périodes d'objectifs"
+                  decoration-muted="state in ('closed', 'cancelled')"
+                  decoration-success="state == 'open'">
+                <field name="name"/>
+                <field name="exercice"/>
+                <field name="date_debut"/>
+                <field name="date_fin"/>
+                <field name="nb_agents" string="Agents visés"/>
+                <field name="nb_avec_objectif" string="Servis"/>
+                <field name="nb_sans_objectif" string="Sans objectif"
+                       decoration-danger="nb_sans_objectif &gt; 0"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'open'"
+                       decoration-muted="state in ('closed', 'cancelled')"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_ev_periode_form" model="ir.ui.view">
+        <field name="name">ev.periode.objectifs.form</field>
+        <field name="model">ev.periode.objectifs</field>
+        <field name="arch" type="xml">
+            <form string="Période d'objectifs">
+                <header>
+                    <button name="action_ouvrir" type="object"
+                            string="Ouvrir la période" class="btn-primary"
+                            invisible="state != 'draft'"/>
+                    <!-- La RÉOUVERTURE est le recours prévu : un agent
+                         oublié, un manager absent pendant la période. Elle
+                         reste possible même une fois la campagne
+                         d'évaluation lancée. -->
+                    <button name="action_ouvrir" type="object"
+                            string="Rouvrir la période" class="btn-primary"
+                            invisible="state != 'closed'"/>
+                    <button name="action_fermer" type="object"
+                            string="Fermer la période"
+                            invisible="state != 'open'"/>
+                    <button name="action_remettre_brouillon" type="object"
+                            string="Remettre en brouillon"
+                            invisible="state not in ('closed', 'cancelled')"/>
+                    <button name="action_fixer_objectif" type="object"
+                            string="Fixer un objectif"
+                            invisible="not ouverte"
+                            help="Pour saisir à la place d'un responsable absent."/>
+                    <button name="action_annuler" type="object"
+                            string="Annuler"
+                            invisible="state in ('cancelled',)"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,open,closed"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_voir_objectifs" type="object"
+                                class="oe_stat_button" icon="fa-bullseye">
+                            <field name="nb_avec_objectif" widget="statinfo"
+                                   string="Agents servis"/>
+                        </button>
+                        <button name="action_voir_sans_objectif" type="object"
+                                class="oe_stat_button" icon="fa-user-times">
+                            <field name="nb_sans_objectif" widget="statinfo"
+                                   string="Sans objectif"/>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="Objectifs 2027"/></h1>
+                    </div>
+                    <group>
+                        <group string="Exercice">
+                            <field name="exercice"/>
+                            <field name="company_id"
+                                   groups="base.group_multi_company"/>
+                            <field name="ouverte" invisible="1"/>
+                        </group>
+                        <group string="Période de saisie">
+                            <field name="date_debut"
+                                   readonly="state in ('closed', 'cancelled')"/>
+                            <field name="date_fin"
+                                   readonly="state == 'cancelled'"/>
+                        </group>
+                    </group>
+                    <group string="Population concernée">
+                        <field name="population" widget="radio"
+                               readonly="state not in ('draft', 'open')"/>
+                        <field name="department_ids" widget="many2many_tags"
+                               invisible="population != 'department'"
+                               required="population == 'department'"
+                               readonly="state not in ('draft', 'open')"/>
+                        <field name="inclure_sous_departements"
+                               invisible="population != 'department'"
+                               readonly="state not in ('draft', 'open')"/>
+                        <field name="employee_ids" widget="many2many_tags"
+                               invisible="population != 'employee'"
+                               required="population == 'employee'"
+                               readonly="state not in ('draft', 'open')"/>
+                        <field name="employee_exclu_ids"
+                               widget="many2many_tags"
+                               readonly="state not in ('draft', 'open')"/>
+                        <field name="nb_agents"/>
+                    </group>
+                    <notebook>
+                        <page string="Objectifs fixés">
+                            <field name="goal_ids" readonly="1">
+                                <tree create="false" delete="false">
+                                    <field name="employee_id"/>
+                                    <field name="name"/>
+                                    <field name="manager_id"/>
+                                    <field name="deadline"/>
+                                    <field name="progression"
+                                           widget="progressbar"
+                                           optional="show"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_ev_periode_search" model="ir.ui.view">
+        <field name="name">ev.periode.objectifs.search</field>
+        <field name="model">ev.periode.objectifs</field>
+        <field name="arch" type="xml">
+            <search string="Périodes d'objectifs">
+                <field name="name"/>
+                <field name="exercice"/>
+                <filter name="ouvertes" string="Ouvertes"
+                        domain="[('state', '=', 'open')]"/>
+                <filter name="fermees" string="Fermées"
+                        domain="[('state', '=', 'closed')]"/>
+                <group expand="0" string="Regrouper par">
+                    <filter name="grp_exercice" string="Exercice"
+                            context="{'group_by': 'exercice'}"/>
+                    <filter name="grp_etat" string="Statut"
+                            context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Le service RH fixe un objectif à la place d'un responsable
+         absent. L'objectif reste attribué au RESPONSABLE de l'agent :
+         c'est lui qui répond de la commande passée. -->
+    <record id="view_ev_objectif_wizard_form" model="ir.ui.view">
+        <field name="name">ev.objectif.wizard.form</field>
+        <field name="model">ev.objectif.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Fixer un objectif">
+                <group>
+                    <field name="periode_id" invisible="1"/>
+                    <field name="agents_possibles_ids" invisible="1"/>
+                    <field name="exercice"/>
+                    <field name="sans_objectif_seulement"/>
+                    <field name="employee_id"
+                           options="{'no_create': True, 'no_open': True}"/>
+                    <field name="manager_id"
+                           options="{'no_create': True, 'no_open': True}"/>
+                    <field name="name" placeholder="Une phrase — ex. : réduire de 20 % les incidents applicatifs"/>
+                    <field name="deadline"/>
+                    <field name="description"
+                           placeholder="Précisions (facultatif)"/>
+                </group>
+                <footer>
+                    <button name="action_confirm" type="object"
+                            string="Enregistrer" class="btn-primary"/>
+                    <button name="action_confirm_suivant" type="object"
+                            string="Enregistrer et servir le suivant"/>
+                    <button string="Annuler" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_ev_periode" model="ir.actions.act_window">
+        <field name="name">Fixation des objectifs</field>
+        <field name="res_model">ev.periode.objectifs</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_ev_periode_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Ouvrez la période de fixation des objectifs
+            </p>
+            <p>
+                Les objectifs se fixent en <b>début d'exercice</b>, bien
+                avant la campagne d'évaluation. Ouvrez la période, les
+                responsables renseignent les objectifs de leurs
+                collaborateurs, puis vous la fermez. La campagne
+                d'évaluation du même exercice les reprendra
+                automatiquement.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_ev_periode" name="Fixation des objectifs"
+              parent="hr_appraisal.menu_hr_appraisal_root"
+              action="action_ev_periode" sequence="4"
+              groups="hr_appraisal.group_hr_appraisal_user"/>
+
+</odoo>
