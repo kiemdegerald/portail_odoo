@@ -112,9 +112,11 @@
                                     <field name="employee_id"/>
                                     <field name="name"/>
                                     <field name="manager_id"/>
+                                    <field name="ev_nb_activites"
+                                           string="Activités"
+                                           decoration-danger="ev_nb_activites == 0"/>
                                     <field name="deadline"/>
                                     <field name="progression"
-                                           widget="progressbar"
                                            optional="show"/>
                                 </tree>
                             </field>

@@ -53,8 +53,8 @@
             <li t-if="page_name == 'team_appraisal' and appraisal" class="breadcrumb-item active">
                 <t t-esc="appraisal.employee_id.name"/>
             </li>
-            <li t-if="page_name == 'objectifs'" class="breadcrumb-item active">
-                Objectifs de mes collaborateurs
+            <li t-if="page_name == 'objectifs'" class="breadcrumb-item">
+                <a href="/my/objectifs">Objectifs</a>
             </li>
             <li t-if="page_name == 'mes_objectifs'" class="breadcrumb-item active">
                 Mes objectifs
@@ -77,72 +77,110 @@
                 <t t-esc="error['global']"/>
             </div>
 
+            <p class="text-muted mt-3">
+                Voici ce que votre responsable attend de vous. Vous ne
+                modifiez pas ces objectifs — vous déclarez où vous en êtes,
+                tout au long de l'année.
+            </p>
+
             <t t-foreach="lignes" t-as="ligne">
                 <t t-set="periode" t-value="ligne['periode']"/>
-                <div class="card mt-3">
-                    <div class="card-header">
-                        <strong>Exercice <t t-esc="periode.exercice"/></strong>
-                        <span class="text-muted ms-2" t-esc="periode.name"/>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted small">
-                            Ces objectifs vous ont été fixés par votre
-                            responsable. Vous ne les modifiez pas — vous
-                            déclarez où vous en êtes, tout au long de
-                            l'année.
-                        </p>
-                        <form method="post" action="/my/mes-objectifs">
-                            <input type="hidden" name="csrf_token"
-                                   t-att-value="request.csrf_token()"/>
-                            <input type="hidden" name="periode_id"
-                                   t-att-value="periode.id"/>
-                            <table class="table table-sm align-middle">
-                                <thead>
-                                    <tr class="active">
-                                        <th>Objectif</th>
-                                        <th style="width: 150px;">Fixé par</th>
-                                        <th style="width: 130px;">Échéance</th>
-                                        <th style="width: 150px;">Où j'en suis</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr t-foreach="ligne['objectifs']" t-as="obj">
-                                        <td>
-                                            <t t-esc="obj.name"/>
-                                            <div t-if="obj.description"
-                                                 class="text-muted small">
-                                                <t t-out="obj.description"/>
-                                            </div>
-                                        </td>
-                                        <td class="text-muted">
-                                            <t t-esc="obj.manager_id.name"/>
-                                        </td>
-                                        <td><span t-field="obj.deadline"/></td>
-                                        <td>
-                                            <select t-attf-name="progress_#{obj.id}"
-                                                    class="form-select form-select-sm">
-                                                <option t-foreach="niveaux" t-as="niv"
-                                                        t-att-value="niv[0]"
-                                                        t-att-selected="'selected' if obj.progression == niv[0] else None">
-                                                    <t t-esc="niv[1]"/>
-                                                </option>
-                                            </select>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                            <button type="submit" class="btn btn-sm btn-primary">
-                                Enregistrer mon avancement
-                            </button>
-                        </form>
-                    </div>
+
+                <div class="d-flex justify-content-between align-items-baseline mt-4 mb-2">
+                    <h5 class="mb-0">Exercice <t t-esc="periode.exercice"/></h5>
+                    <span class="text-muted small" t-esc="periode.name"/>
                 </div>
+
+                <form method="post" action="/my/mes-objectifs">
+                    <input type="hidden" name="csrf_token"
+                           t-att-value="request.csrf_token()"/>
+                    <input type="hidden" name="periode_id"
+                           t-att-value="periode.id"/>
+
+                    <!-- UN OBJECTIF = UNE CARTE. Ce qu'on lui demande à
+                         gauche, où il en est à droite : la seule chose
+                         qu'il ait à renseigner tombe toujours au même
+                         endroit. -->
+                    <div t-foreach="ligne['objectifs']" t-as="obj" class="card mb-3">
+                        <div class="card-header">
+                            <div class="row g-2 align-items-center">
+                                <div class="col-md-8">
+                                    <div class="fw-bold"><t t-esc="obj.name"/></div>
+                                    <div class="text-muted small">
+                                        Fixé par <t t-esc="obj.manager_id.name"/>
+                                        <t t-if="obj.deadline">
+                                            — échéance <span t-field="obj.deadline"/>
+                                        </t>
+                                    </div>
+                                    <div t-if="obj.description"
+                                         class="text-muted small mt-1">
+                                        <t t-out="obj.description"/>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small mb-1"
+                                           t-attf-for="progress_#{obj.id}">
+                                        Où j'en suis
+                                    </label>
+                                    <select t-attf-name="progress_#{obj.id}"
+                                            t-attf-id="progress_#{obj.id}"
+                                            class="form-select form-select-sm">
+                                        <option t-foreach="niveaux" t-as="niv"
+                                                t-att-value="niv[0]"
+                                                t-att-selected="'selected' if obj.progression == niv[0] else None">
+                                            <t t-esc="niv[1]"/>
+                                        </option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card-body">
+                            <t t-if="not obj.ev_activite_ids">
+                                <p class="text-muted small mb-0">
+                                    Le détail des activités n'a pas encore été
+                                    précisé par votre responsable.
+                                </p>
+                            </t>
+                            <t t-else="">
+                                <div class="text-muted small mb-2">
+                                    Ce qui est attendu de vous
+                                </div>
+                                <table class="table table-sm align-middle mb-0">
+                                    <thead>
+                                        <tr class="active">
+                                            <th style="width: 45%;">Activité</th>
+                                            <th>Résultat attendu</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr t-foreach="obj.ev_activite_ids" t-as="act">
+                                            <td><t t-esc="act.name"/></td>
+                                            <td class="text-muted">
+                                                <t t-if="act.resultat_attendu">
+                                                    <t t-esc="act.resultat_attendu"/>
+                                                </t>
+                                                <span t-else="">—</span>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </t>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <button type="submit" class="btn btn-sm btn-primary">
+                            Enregistrer mon avancement
+                        </button>
+                    </div>
+                </form>
             </t>
         </t>
     </template>
 
-    <!-- ============ Objectifs de mes collaborateurs ============ -->
-    <template id="portal_mes_objectifs" name="Objectifs de mes collaborateurs">
+    <!-- ============ Objectifs : niveau 1, les exercices ============ -->
+    <template id="portal_objectifs_exercices" name="Objectifs — exercices">
         <t t-call="portal.portal_layout">
             <t t-set="breadcrumbs_searchbar" t-value="True"/>
             <t t-call="portal.portal_searchbar">
@@ -152,149 +190,287 @@
             <div t-if="success_message" class="alert alert-success mt-3" role="alert">
                 <t t-esc="success_message"/>
             </div>
+
+            <p class="text-muted mt-3">
+                Les objectifs se fixent en début d'exercice. Choisissez
+                l'exercice pour voir vos collaborateurs.
+            </p>
+
+            <div class="list-group mt-2">
+                <a t-foreach="lignes" t-as="ligne"
+                   t-attf-href="/my/objectifs/#{ligne['periode'].id}"
+                   class="list-group-item list-group-item-action">
+                    <div class="d-flex justify-content-between align-items-start gap-3">
+                        <div>
+                            <div class="fw-bold">
+                                <t t-esc="ligne['periode'].name"/>
+                            </div>
+                            <div class="text-muted small">
+                                Exercice <t t-esc="ligne['periode'].exercice"/> —
+                                du <span t-field="ligne['periode'].date_debut"/>
+                                au <span t-field="ligne['periode'].date_fin"/>
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <span t-if="ligne['periode'].ouverte"
+                                  class="badge text-bg-success">Ouverte</span>
+                            <span t-else="" class="badge text-bg-secondary">Fermée</span>
+                            <div class="small mt-1">
+                                <t t-esc="ligne['agents']"/>
+                                collaborateur<t t-if="ligne['agents'] &gt; 1">s</t>
+                            </div>
+                            <div t-if="ligne['sans_objectif']"
+                                 class="small text-danger fw-bold">
+                                <t t-esc="ligne['sans_objectif']"/> sans objectif
+                            </div>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </t>
+    </template>
+
+    <!-- ======== Objectifs : niveau 2, mes collaborateurs ======== -->
+    <template id="portal_objectifs_collaborateurs" name="Objectifs — collaborateurs">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title"><t t-esc="periode.name"/></t>
+            </t>
+
+            <div t-if="success_message" class="alert alert-success mt-3" role="alert">
+                <t t-esc="success_message"/>
+            </div>
+            <div t-if="motif_ferme" class="alert alert-secondary mt-3" role="alert">
+                <t t-esc="motif_ferme"/>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <div class="text-muted">
+                    Exercice <strong t-esc="periode.exercice"/> —
+                    saisie jusqu'au <span t-field="periode.date_fin"/>
+                </div>
+                <a href="/my/objectifs" class="btn btn-sm btn-light">
+                    <i class="fa fa-angle-left"/> Tous les exercices
+                </a>
+            </div>
+
+            <div class="list-group mt-3">
+                <a t-foreach="agents" t-as="bloc"
+                   t-attf-href="/my/objectifs/#{periode.id}/#{bloc['employee'].id}"
+                   class="list-group-item list-group-item-action">
+                    <div class="d-flex justify-content-between align-items-start gap-3">
+                        <div>
+                            <div class="fw-bold">
+                                <t t-esc="bloc['employee'].name"/>
+                            </div>
+                            <div t-if="bloc['employee'].job_title"
+                                 class="text-muted small">
+                                <t t-esc="bloc['employee'].job_title"/>
+                            </div>
+                        </div>
+                        <div class="text-end small">
+                            <t t-if="not bloc['nb_objectifs']">
+                                <span class="badge text-bg-danger">Aucun objectif</span>
+                            </t>
+                            <t t-else="">
+                                <div>
+                                    <t t-esc="bloc['nb_objectifs']"/>
+                                    objectif<t t-if="bloc['nb_objectifs'] &gt; 1">s</t>,
+                                    <t t-esc="bloc['nb_activites']"/>
+                                    activité<t t-if="bloc['nb_activites'] &gt; 1">s</t>
+                                </div>
+                                <div t-if="bloc['objectifs_sans_activite']"
+                                     class="text-danger fw-bold">
+                                    <t t-esc="bloc['objectifs_sans_activite']"/>
+                                    sans activité
+                                </div>
+                            </t>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </t>
+    </template>
+
+    <!-- ===== Objectifs : niveau 3, le détail d'un collaborateur ===== -->
+    <template id="portal_objectifs_agent" name="Objectifs — collaborateur">
+        <t t-call="portal.portal_layout">
+            <t t-set="breadcrumbs_searchbar" t-value="True"/>
+            <t t-call="portal.portal_searchbar">
+                <t t-set="title"><t t-esc="agent.name"/></t>
+            </t>
+
+            <div t-if="success_message" class="alert alert-success mt-3" role="alert">
+                <t t-esc="success_message"/>
+            </div>
             <div t-if="error.get('global')" class="alert alert-danger mt-3" role="alert">
                 <t t-esc="error['global']"/>
             </div>
+            <div t-if="motif_ferme" class="alert alert-secondary mt-3" role="alert">
+                <t t-esc="motif_ferme"/>
+            </div>
 
-            <t t-foreach="lignes" t-as="ligne">
-                <t t-set="periode" t-value="ligne['periode']"/>
-                <div class="card mt-3">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <div>
-                            <strong t-esc="periode.name"/>
-                            <span class="text-muted ms-2">
-                                exercice <t t-esc="periode.exercice"/>
-                            </span>
-                        </div>
-                        <span t-if="periode.ouverte"
-                              class="badge text-bg-success">Ouverte</span>
-                        <span t-else="" class="badge text-bg-secondary">Fermée</span>
-                    </div>
-                    <div class="card-body">
-                        <!-- Quand c'est fermé, on dit POURQUOI : sinon le
-                             responsable ne sait pas s'il doit attendre ou
-                             demander une réouverture. -->
-                        <div t-if="ligne['motif_ferme']"
-                             class="alert alert-secondary" role="alert">
-                            <t t-esc="ligne['motif_ferme']"/>
-                        </div>
-                        <div t-elif="ligne['sans_objectif']"
-                             class="alert alert-warning" role="alert">
-                            <strong t-esc="ligne['sans_objectif']"/>
-                            de vos collaborateurs
-                            <t t-if="ligne['sans_objectif'] == 1">n'a</t>
-                            <t t-else="">n'ont</t>
-                            pas encore d'objectif pour cet exercice.
-                            La saisie est ouverte jusqu'au
-                            <span t-field="periode.date_fin"/>.
-                        </div>
-                        <div t-else="" class="alert alert-success" role="alert">
-                            Tous vos collaborateurs ont leurs objectifs.
-                            Vous pouvez encore les compléter jusqu'au
-                            <span t-field="periode.date_fin"/>.
-                        </div>
+            <div class="d-flex justify-content-between align-items-center mt-3 mb-1">
+                <div class="text-muted">
+                    <t t-if="agent.job_title">
+                        <t t-esc="agent.job_title"/> —
+                    </t>
+                    <t t-esc="periode.name"/>, exercice
+                    <strong t-esc="periode.exercice"/>
+                </div>
+                <a t-attf-href="/my/objectifs/#{periode.id}"
+                   class="btn btn-sm btn-light">
+                    <i class="fa fa-angle-left"/> Mes collaborateurs
+                </a>
+            </div>
 
-                        <t t-if="not ligne['agents']">
-                            <p class="text-muted">
-                                Aucun de vos collaborateurs n'est visé par
-                                cette période.
-                            </p>
-                        </t>
-
-                        <t t-foreach="ligne['agents']" t-as="bloc">
-                            <t t-set="agent" t-value="bloc['employee']"/>
-                            <div class="border rounded p-3 mb-3">
-                                <h6 class="mb-1">
-                                    <t t-esc="agent.name"/>
-                                    <span t-if="agent.job_title" class="text-muted">
-                                        — <t t-esc="agent.job_title"/>
-                                    </span>
-                                </h6>
-
-                                <t t-if="not bloc['objectifs']">
-                                    <p class="text-muted small mb-2">
-                                        Aucun objectif fixé.
-                                    </p>
-                                </t>
-                                <table t-else="" class="table table-sm align-middle mb-2">
-                                    <thead>
-                                        <tr class="active">
-                                            <th>Objectif</th>
-                                            <th style="width: 140px;">Échéance</th>
-                                            <th style="width: 120px;">Avancement</th>
-                                            <th style="width: 60px;"/>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr t-foreach="bloc['objectifs']" t-as="obj">
-                                            <td>
-                                                <t t-esc="obj.name"/>
-                                                <div t-if="obj.description"
-                                                     class="text-muted small">
-                                                    <t t-out="obj.description"/>
-                                                </div>
-                                            </td>
-                                            <td><span t-field="obj.deadline"/></td>
-                                            <td>
-                                                <t t-esc="dict(obj._fields['progression'].selection).get(obj.progression, '')"/>
-                                            </td>
-                                            <td class="text-end">
-                                                <form t-if="periode.ouverte" method="post"
-                                                      action="/my/objectifs">
-                                                    <input type="hidden" name="csrf_token"
-                                                           t-att-value="request.csrf_token()"/>
-                                                    <input type="hidden" name="action" value="goal_remove"/>
-                                                    <input type="hidden" name="periode_id"
-                                                           t-att-value="periode.id"/>
-                                                    <input type="hidden" name="goal_id"
-                                                           t-att-value="obj.id"/>
-                                                    <button type="submit"
-                                                            class="btn btn-sm btn-link text-danger p-0"
-                                                            title="Retirer cet objectif">
-                                                        <i class="fa fa-trash"/>
-                                                    </button>
-                                                </form>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-
-                                <form t-if="periode.ouverte" method="post"
-                                      action="/my/objectifs" class="row g-2">
-                                    <input type="hidden" name="csrf_token"
-                                           t-att-value="request.csrf_token()"/>
-                                    <input type="hidden" name="action" value="goal_add"/>
-                                    <input type="hidden" name="periode_id"
-                                           t-att-value="periode.id"/>
-                                    <input type="hidden" name="employee_id"
-                                           t-att-value="agent.id"/>
-                                    <div class="col-md-5">
-                                        <input type="text" name="goal_name" maxlength="200"
-                                               class="form-control form-control-sm"
-                                               placeholder="Nouvel objectif — une phrase"
-                                               required="required"/>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <input type="text" name="goal_description"
-                                               class="form-control form-control-sm"
-                                               placeholder="Précisions (facultatif)"/>
-                                    </div>
-                                    <div class="col-md-2">
-                                        <input type="date" name="goal_deadline"
-                                               class="form-control form-control-sm"
-                                               title="Échéance"/>
-                                    </div>
-                                    <div class="col-md-2">
-                                        <button type="submit" class="btn btn-sm btn-primary w-100">
-                                            <i class="fa fa-plus"/> Ajouter
-                                        </button>
-                                    </div>
-                                </form>
-                            </div>
-                        </t>
-                    </div>
+            <t t-if="not objectifs">
+                <div class="alert alert-warning" role="alert">
+                    Aucun objectif n'a encore été fixé à
+                    <t t-esc="agent.name"/> pour cet exercice.
                 </div>
             </t>
+
+            <!-- UN OBJECTIF = UN BLOC. L'en-tête porte l'objectif, le
+                 corps ses activités : c'est cette séparation qui manquait
+                 quand tout était empilé dans un seul tableau. -->
+            <div t-foreach="objectifs" t-as="obj" class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-start gap-3">
+                    <div>
+                        <div class="fw-bold"><t t-esc="obj.name"/></div>
+                        <div class="text-muted small">
+                            <t t-if="obj.deadline">
+                                Échéance <span t-field="obj.deadline"/> —
+                            </t>
+                            Avancement déclaré :
+                            <t t-esc="dict(obj._fields['progression'].selection).get(obj.progression, '')"/>
+                        </div>
+                        <div t-if="obj.description" class="text-muted small mt-1">
+                            <t t-out="obj.description"/>
+                        </div>
+                    </div>
+                    <form t-if="periode.ouverte" method="post"
+                          t-attf-action="/my/objectifs/#{periode.id}/#{agent.id}">
+                        <input type="hidden" name="csrf_token"
+                               t-att-value="request.csrf_token()"/>
+                        <input type="hidden" name="action" value="goal_remove"/>
+                        <input type="hidden" name="goal_id" t-att-value="obj.id"/>
+                        <button type="submit"
+                                class="btn btn-sm btn-link text-danger p-0"
+                                title="Retirer cet objectif">
+                            <i class="fa fa-trash"/>
+                        </button>
+                    </form>
+                </div>
+
+                <div class="card-body">
+                    <t t-if="not obj.ev_activite_ids">
+                        <div class="alert alert-danger py-2 mb-3" role="alert">
+                            Aucune activité : cet objectif ne pourra pas être
+                            évalué en fin d'exercice.
+                        </div>
+                    </t>
+                    <table t-else="" class="table table-sm align-middle mb-3">
+                        <thead>
+                            <tr class="active">
+                                <th style="width: 40%;">Activité</th>
+                                <th>Résultat attendu</th>
+                                <th style="width: 40px;"/>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr t-foreach="obj.ev_activite_ids" t-as="act">
+                                <td><t t-esc="act.name"/></td>
+                                <td>
+                                    <t t-if="act.resultat_attendu">
+                                        <t t-esc="act.resultat_attendu"/>
+                                    </t>
+                                    <span t-else="" class="text-warning">
+                                        à préciser
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    <form t-if="periode.ouverte" method="post"
+                                          t-attf-action="/my/objectifs/#{periode.id}/#{agent.id}">
+                                        <input type="hidden" name="csrf_token"
+                                               t-att-value="request.csrf_token()"/>
+                                        <input type="hidden" name="action"
+                                               value="activite_remove"/>
+                                        <input type="hidden" name="activite_id"
+                                               t-att-value="act.id"/>
+                                        <button type="submit"
+                                                class="btn btn-sm btn-link text-danger p-0"
+                                                title="Retirer cette activité">
+                                            <i class="fa fa-times"/>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <form t-if="periode.ouverte" method="post"
+                          t-attf-action="/my/objectifs/#{periode.id}/#{agent.id}"
+                          class="row g-2">
+                        <input type="hidden" name="csrf_token"
+                               t-att-value="request.csrf_token()"/>
+                        <input type="hidden" name="action" value="activite_add"/>
+                        <input type="hidden" name="goal_id" t-att-value="obj.id"/>
+                        <div class="col-md-5">
+                            <input type="text" name="activite_name" maxlength="300"
+                                   required="required" class="form-control form-control-sm"
+                                   placeholder="Activité — ce qu'il doit faire"/>
+                        </div>
+                        <div class="col-md-5">
+                            <input type="text" name="resultat_attendu"
+                                   class="form-control form-control-sm"
+                                   placeholder="Résultat attendu"/>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit"
+                                    class="btn btn-sm btn-outline-secondary w-100">
+                                <i class="fa fa-plus"/> Activité
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- L'ajout d'un objectif, à part : c'est un geste d'une autre
+                 nature que la saisie des activités. -->
+            <div t-if="periode.ouverte" class="card mb-4">
+                <div class="card-header fw-bold">Ajouter un objectif</div>
+                <div class="card-body">
+                    <form method="post"
+                          t-attf-action="/my/objectifs/#{periode.id}/#{agent.id}"
+                          class="row g-2">
+                        <input type="hidden" name="csrf_token"
+                               t-att-value="request.csrf_token()"/>
+                        <input type="hidden" name="action" value="goal_add"/>
+                        <div class="col-md-5">
+                            <input type="text" name="goal_name" maxlength="200"
+                                   required="required" class="form-control form-control-sm"
+                                   placeholder="Objectif — une phrase"/>
+                        </div>
+                        <div class="col-md-3">
+                            <input type="text" name="goal_description"
+                                   class="form-control form-control-sm"
+                                   placeholder="Précisions (facultatif)"/>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="date" name="goal_deadline"
+                                   class="form-control form-control-sm"
+                                   title="Échéance"/>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-sm btn-primary w-100">
+                                <i class="fa fa-plus"/> Ajouter
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </t>
     </template>
 

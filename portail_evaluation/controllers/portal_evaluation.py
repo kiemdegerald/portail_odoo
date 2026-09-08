@@ -47,6 +47,8 @@ SUCCESS_MESSAGES = {
                      "sur son portail.",
     "objectif_retire": "L'objectif a été retiré.",
     "avancement_enregistre": "Votre avancement a été enregistré.",
+    "activite_ajoutee": "L'activité a été ajoutée.",
+    "activite_retiree": "L'activité a été retirée.",
     "progress_saved": "L'avancement de vos objectifs a été enregistré.",
     "interview_set": "La date de l'entretien a été enregistrée. Le "
                      "collaborateur la voit sur sa fiche.",
@@ -148,6 +150,24 @@ class PortailEvaluation(PortailCommon):
                     ("employee_id", "in", employees.ids),
                     ("ev_periode_id", "!=", False)]) if employees else 0
         return values
+
+    def _ev_verifier_mon_objectif(self, periode, objectif_id):
+        """L'objectif visé appartient-il bien à l'un de MES collaborateurs ?
+
+        Sans ce contrôle, un responsable pourrait viser l'objectif d'un
+        agent d'un autre service en trafiquant le formulaire.
+        """
+        try:
+            objectif_id = int(objectif_id or 0)
+        except (TypeError, ValueError):
+            objectif_id = 0
+        objectif = periode.goal_ids.filtered(lambda g: g.id == objectif_id)
+        if not objectif or objectif.employee_id not in \
+                self._ev_mes_collaborateurs(periode):
+            raise UserError(_(
+                "Cet objectif ne fait pas partie de ceux de vos "
+                "collaborateurs."))
+        return objectif
 
     def _ev_mes_collaborateurs(self, periode):
         """Mes collaborateurs directs visés par cette période."""
@@ -404,80 +424,128 @@ class PortailEvaluation(PortailCommon):
                 "page_name": "mes_objectifs",
             })
 
-    @http.route(["/my/objectifs"], type="http", auth="user", website=True,
-                methods=["GET", "POST"])
-    def portal_mes_objectifs(self, **post):
-        """L'écran du responsable : il fixe les objectifs de ses
-        collaborateurs, au titre de la période ouverte par la RH.
-
-        Rien ici ne dépend d'une évaluation : les objectifs se fixent en
-        début d'exercice, la campagne d'évaluation viendra des mois plus
-        tard les reprendre par l'exercice.
-        """
+    @http.route(["/my/objectifs"], type="http", auth="user",
+                website=True)
+    def portal_objectifs_exercices(self, **post):
+        """Niveau 1 — les exercices. Une ligne par période ouverte par la
+        RH, avec l'avancement du responsable sur chacune."""
         periodes = self._ev_periodes_objectifs()
         if not periodes:
             return request.redirect("/my")
-        error = {}
-        success = None
-
-        if request.httprequest.method == "POST":
-            periode = periodes.filtered(
-                lambda p: str(p.id) == (post.get("periode_id") or ""))
-            if not periode:
-                error["global"] = _("Période inconnue.")
-            else:
-                try:
-                    action = post.get("action")
-                    if action == "goal_add":
-                        agent = self._ev_mes_collaborateurs(periode).filtered(
-                            lambda e: str(e.id) == (post.get("employee_id")
-                                                    or ""))
-                        if not agent:
-                            raise UserError(_(
-                                "Cet agent ne fait pas partie de vos "
-                                "collaborateurs pour cette période."))
-                        # Le responsable qui passe la commande, c'est
-                        # l'utilisateur connecté — pas forcément le
-                        # supérieur enregistré sur la fiche.
-                        moi = self._get_portal_employees()[:1]
-                        periode._ev_objectif_creer(
-                            agent, post.get("goal_name"),
-                            echeance=(post.get("goal_deadline") or "").strip()
-                            or None,
-                            description=self._texte_vers_html(
-                                post.get("goal_description")),
-                            manager=agent.parent_id or moi)
-                        return request.redirect(
-                            "/my/objectifs?success=objectif_fixe")
-                    if action == "goal_remove":
-                        periode._ev_objectif_supprimer(post.get("goal_id"))
-                        return request.redirect(
-                            "/my/objectifs?success=objectif_retire")
-                except (UserError, ValidationError) as exc:
-                    error["global"] = exc.args[0] if exc.args else str(exc)
-
-        if post.get("success"):
-            success = SUCCESS_MESSAGES.get(post["success"])
-
-        lignes = []
-        for periode in periodes.sorted(lambda p: (p.state != "open",
-                                                  p.exercice), reverse=False):
-            agents = self._ev_mes_collaborateurs(periode)
-            lignes.append({
-                "periode": periode,
-                "motif_ferme": periode._ev_motif_ferme(),
-                "agents": [{
-                    "employee": agent,
-                    "objectifs": periode._ev_objectifs_de(agent),
-                } for agent in agents.sorted("name")],
-                "sans_objectif": len(
-                    self._ev_collaborateurs_sans_objectif(periode)),
+        lignes = [{
+            "periode": periode,
+            "agents": len(self._ev_mes_collaborateurs(periode)),
+            "sans_objectif": len(
+                self._ev_collaborateurs_sans_objectif(periode)),
+        } for periode in periodes.sorted(
+            lambda p: (p.state != "open", p.exercice), reverse=False)]
+        return request.render(
+            "portail_evaluation.portal_objectifs_exercices", {
+                "lignes": lignes,
+                "success_message": SUCCESS_MESSAGES.get(post.get("success")),
+                "page_name": "objectifs",
             })
 
-        return request.render("portail_evaluation.portal_mes_objectifs", {
-            "lignes": lignes,
+    def _ev_periode_ou_rediriger(self, periode_id):
+        """La période, si elle concerne bien mes collaborateurs."""
+        periode = self._ev_periodes_objectifs().filtered(
+            lambda p: p.id == periode_id)
+        if not periode:
+            raise MissingError(_("Cette période ne vous concerne pas."))
+        return periode
+
+    @http.route(["/my/objectifs/<int:periode_id>"], type="http",
+                auth="user", website=True)
+    def portal_objectifs_collaborateurs(self, periode_id=None, **post):
+        """Niveau 2 — mes collaborateurs pour cette période, et où en est
+        chacun d'eux."""
+        try:
+            periode = self._ev_periode_ou_rediriger(periode_id)
+        except (AccessError, MissingError):
+            return request.redirect("/my/objectifs")
+        agents = []
+        for agent in self._ev_mes_collaborateurs(periode).sorted("name"):
+            objectifs = periode._ev_objectifs_de(agent)
+            agents.append({
+                "employee": agent,
+                "nb_objectifs": len(objectifs),
+                "nb_activites": sum(o.ev_nb_activites for o in objectifs),
+                # Ce qui doit sauter aux yeux : un objectif sans activité
+                # ne pourra pas être noté en fin d'exercice.
+                "objectifs_sans_activite": len(
+                    objectifs.filtered(lambda o: not o.ev_activite_ids)),
+            })
+        return request.render(
+            "portail_evaluation.portal_objectifs_collaborateurs", {
+                "periode": periode,
+                "motif_ferme": periode._ev_motif_ferme(),
+                "agents": agents,
+                "success_message": SUCCESS_MESSAGES.get(post.get("success")),
+                "page_name": "objectifs",
+            })
+
+    @http.route(["/my/objectifs/<int:periode_id>/<int:employee_id>"],
+                type="http", auth="user", website=True,
+                methods=["GET", "POST"])
+    def portal_objectifs_agent(self, periode_id=None, employee_id=None,
+                               **post):
+        """Niveau 3 — les objectifs d'UN collaborateur, leurs activités et
+        les résultats attendus. Toute la saisie se fait ici."""
+        try:
+            periode = self._ev_periode_ou_rediriger(periode_id)
+        except (AccessError, MissingError):
+            return request.redirect("/my/objectifs")
+        agent = self._ev_mes_collaborateurs(periode).filtered(
+            lambda e: e.id == employee_id)
+        if not agent:
+            return request.redirect("/my/objectifs/%s" % periode.id)
+        retour = "/my/objectifs/%s/%s" % (periode.id, agent.id)
+        error = {}
+
+        if request.httprequest.method == "POST":
+            try:
+                action = post.get("action")
+                if action == "goal_add":
+                    # Le responsable qui passe la commande, c'est
+                    # l'utilisateur connecté — pas forcément le supérieur
+                    # enregistré sur la fiche.
+                    moi = self._get_portal_employees()[:1]
+                    periode._ev_objectif_creer(
+                        agent, post.get("goal_name"),
+                        echeance=(post.get("goal_deadline") or "").strip()
+                        or None,
+                        description=self._texte_vers_html(
+                            post.get("goal_description")),
+                        manager=agent.parent_id or moi)
+                    return request.redirect(retour + "?success=objectif_fixe")
+                if action == "goal_remove":
+                    self._ev_verifier_mon_objectif(periode,
+                                                   post.get("goal_id"))
+                    periode._ev_objectif_supprimer(post.get("goal_id"))
+                    return request.redirect(
+                        retour + "?success=objectif_retire")
+                if action == "activite_add":
+                    self._ev_verifier_mon_objectif(periode,
+                                                   post.get("goal_id"))
+                    periode._ev_activite_creer(
+                        post.get("goal_id"), post.get("activite_name"),
+                        resultat_attendu=post.get("resultat_attendu"))
+                    return request.redirect(
+                        retour + "?success=activite_ajoutee")
+                if action == "activite_remove":
+                    periode._ev_activite_supprimer(post.get("activite_id"))
+                    return request.redirect(
+                        retour + "?success=activite_retiree")
+            except (UserError, ValidationError) as exc:
+                error["global"] = exc.args[0] if exc.args else str(exc)
+
+        return request.render("portail_evaluation.portal_objectifs_agent", {
+            "periode": periode,
+            "motif_ferme": periode._ev_motif_ferme(),
+            "agent": agent,
+            "objectifs": periode._ev_objectifs_de(agent),
             "error": error,
-            "success_message": success,
+            "success_message": SUCCESS_MESSAGES.get(post.get("success")),
             "page_name": "objectifs",
         })
 

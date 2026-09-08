@@ -385,6 +385,51 @@ class EvPeriodeObjectifs(models.Model):
             "description": description or False,
         })
 
+    def _ev_activite_creer(self, objectif_id, libelle, resultat_attendu=None):
+        """Ajoute une activité sous un objectif de CETTE période.
+
+        L'identifiant vient d'un formulaire web : on ne retient que les
+        objectifs de la période, un identifiant étranger n'atteint rien.
+        """
+        self.ensure_one()
+        self._ev_check_ouverte()
+        objectif = self._objectif_de_la_periode(objectif_id)
+        libelle = (libelle or "").strip()
+        if not libelle:
+            raise UserError(_("Une activité doit avoir un libellé."))
+        return self.env["ev.objectif.activite"].sudo().create({
+            "goal_id": objectif.id,
+            "name": libelle,
+            "resultat_attendu": (resultat_attendu or "").strip() or False,
+        })
+
+    def _ev_activite_supprimer(self, activite_id):
+        self.ensure_one()
+        self._ev_check_ouverte()
+        try:
+            activite_id = int(activite_id or 0)
+        except (TypeError, ValueError):
+            activite_id = 0
+        activite = self.env["ev.objectif.activite"].sudo().search([
+            ("id", "=", activite_id),
+            ("goal_id", "in", self.goal_ids.ids),
+        ], limit=1)
+        if not activite:
+            raise UserError(_(
+                "Cette activité ne fait pas partie de la période en cours."))
+        activite.unlink()
+
+    def _objectif_de_la_periode(self, objectif_id):
+        try:
+            objectif_id = int(objectif_id or 0)
+        except (TypeError, ValueError):
+            objectif_id = 0
+        objectif = self.goal_ids.filtered(lambda g: g.id == objectif_id)
+        if not objectif:
+            raise UserError(_(
+                "Cet objectif ne fait pas partie de la période en cours."))
+        return objectif
+
     def _ev_objectif_supprimer(self, objectif_id):
         """Retire un objectif de cette période.
 

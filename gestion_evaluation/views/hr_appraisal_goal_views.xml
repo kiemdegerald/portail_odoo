@@ -11,10 +11,39 @@
         <field name="inherit_id" ref="hr_appraisal.hr_appraisal_goal_view_form"/>
         <field name="arch" type="xml">
             <field name="deadline" position="after">
+                <field name="ev_periode_id" options="{'no_create': True}"
+                       placeholder="Période de fixation des objectifs"/>
                 <field name="ev_campagne_id" options="{'no_create': True}"
+                       invisible="ev_periode_id"
                        placeholder="Au titre de quel exercice ?"/>
-                <field name="ev_exercice" invisible="not ev_campagne_id"/>
+                <field name="ev_exercice"
+                       invisible="not ev_periode_id and not ev_campagne_id"/>
             </field>
+            <!-- Les activités : c'est là que se joue la mesure. Le
+                 résultat attendu se fixe ICI, en début d'exercice ; le
+                 résultat atteint viendra à l'évaluation. -->
+            <sheet position="inside">
+                <notebook>
+                    <page string="Activités" name="ev_activites">
+                        <field name="ev_activite_ids">
+                            <tree editable="bottom">
+                                <field name="sequence" widget="handle"/>
+                                <field name="name"
+                                       placeholder="Superviser les traitements de fin de journée"/>
+                                <field name="resultat_attendu"
+                                       placeholder="Traitements exécutés sans incident bloquant"/>
+                            </tree>
+                        </field>
+                        <div class="text-muted mt-2">
+                            Un objectif est une intention ; ce sont les
+                            <strong>activités</strong> qui se mesurent. Le
+                            résultat attendu se fixe maintenant — ce qui aura
+                            été réellement atteint se saisira à l'évaluation,
+                            en fin d'exercice.
+                        </div>
+                    </page>
+                </notebook>
+            </sheet>
         </field>
     </record>
 
@@ -25,6 +54,8 @@
         <field name="arch" type="xml">
             <field name="deadline" position="after">
                 <field name="ev_exercice" string="Exercice" optional="show"/>
+                <field name="ev_nb_activites" string="Activités"/>
+                <field name="ev_periode_id" optional="hide"/>
                 <field name="ev_campagne_id" optional="hide"/>
             </field>
         </field>

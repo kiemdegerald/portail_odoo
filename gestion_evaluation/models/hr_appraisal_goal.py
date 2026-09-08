@@ -25,6 +25,20 @@ class HrAppraisalGoal(models.Model):
         "ev.periode.objectifs", string="Période d'objectifs", index=True,
         copy=False, ondelete="set null",
         help="Période au titre de laquelle cet objectif a été fixé.")
+    # Un objectif est une intention ; ce qui se mesure, ce sont ses
+    # ACTIVITÉS — c'est la structure de la fiche d'évaluation de la banque.
+    ev_activite_ids = fields.One2many(
+        "ev.objectif.activite", "goal_id", string="Activités",
+        help="Ce que l'agent doit faire pour atteindre l'objectif, et le "
+             "résultat attendu de chaque action.")
+    ev_nb_activites = fields.Integer(
+        string="Activités", compute="_compute_ev_nb_activites")
+
+    @api.depends("ev_activite_ids")
+    def _compute_ev_nb_activites(self):
+        for objectif in self:
+            objectif.ev_nb_activites = len(objectif.ev_activite_ids)
+
     ev_exercice = fields.Char(
         string="Exercice", compute="_compute_ev_exercice",
         store=True, index=True, readonly=False,

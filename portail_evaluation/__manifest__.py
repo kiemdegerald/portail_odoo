@@ -28,7 +28,7 @@ contrôleurs restreignent le domaine à l'employé courant puis lisent en
     "author": "LICELI Technologies",
     "website": "https://www.liceli-technologies.com",
     "category": "Human Resources",
-    "version": "17.0.0.19.0",
+    "version": "17.0.0.22.0",
     "license": "LGPL-3",
     "depends": [
         "portail",
