@@ -37,7 +37,7 @@
                          oublié, un manager absent pendant la période. Elle
                          reste possible même une fois la campagne
                          d'évaluation lancée. -->
-                    <button name="action_ouvrir" type="object"
+                    <button name="action_rouvrir_wizard" type="object"
                             string="Rouvrir la période" class="btn-primary"
                             invisible="state != 'closed'"/>
                     <button name="action_fermer" type="object"
@@ -75,6 +75,8 @@
                     <group>
                         <group string="Exercice">
                             <field name="exercice"/>
+                            <field name="saisie_par" widget="radio"
+                                   readonly="state == 'cancelled'"/>
                             <field name="company_id"
                                    groups="base.group_multi_company"/>
                             <field name="ouverte" invisible="1"/>
@@ -104,6 +106,16 @@
                                widget="many2many_tags"
                                readonly="state not in ('draft', 'open')"/>
                         <field name="nb_agents"/>
+                    </group>
+                    <!-- La dernière réouverture se lit ici. L'historique
+                         complet, lui, est au fil de discussion. -->
+                    <group string="Dernière réouverture"
+                           invisible="reouverture_nb == 0">
+                        <field name="reouverture_par_id"/>
+                        <field name="reouverture_le"/>
+                        <field name="reouverture_nb"/>
+                        <field name="reouverture_motif" nolabel="1"
+                               colspan="2"/>
                     </group>
                     <notebook>
                         <page string="Objectifs fixés">
@@ -156,6 +168,39 @@
     <!-- Le service RH fixe un objectif à la place d'un responsable
          absent. L'objectif reste attribué au RESPONSABLE de l'agent :
          c'est lui qui répond de la commande passée. -->
+    <!-- Rouvrir une période : on dit pourquoi, et on sait qui. -->
+    <record id="view_ev_reouverture_wizard_form" model="ir.ui.view">
+        <field name="name">ev.reouverture.wizard.form</field>
+        <field name="model">ev.reouverture.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Rouvrir la période">
+                <field name="periode_id" invisible="1"/>
+                <field name="campagne_lancee" invisible="1"/>
+                <div class="alert alert-warning" role="alert"
+                     invisible="not campagne_lancee">
+                    Une campagne d'évaluation note déjà les objectifs de cet
+                    exercice. Ce que vous ajouterez ou modifierez ici
+                    changera ce que les responsables ont à mesurer.
+                </div>
+                <group>
+                    <field name="exercice"/>
+                    <field name="nb_avec_objectif" string="Agents servis"/>
+                    <field name="nb_agents" string="Agents visés"/>
+                </group>
+                <group>
+                    <field name="motif" nolabel="1" colspan="2"
+                           placeholder="Ex. : le responsable de la DSI était en mission pendant la période ; ses trois collaborateurs n'ont pas eu d'objectifs."/>
+                </group>
+                <footer>
+                    <button name="action_confirm" type="object"
+                            string="Rouvrir la période" class="btn-primary"/>
+                    <button string="Annuler" class="btn-secondary"
+                            special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
     <record id="view_ev_objectif_wizard_form" model="ir.ui.view">
         <field name="name">ev.objectif.wizard.form</field>
         <field name="model">ev.objectif.wizard</field>

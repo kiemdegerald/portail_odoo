@@ -14,6 +14,7 @@ font en ``sudo()`` APRÈS avoir restreint le domaine à l'employé courant, ce
 qui évite d'ouvrir des droits d'accès (ACL) sur les modèles RH.
 """
 import base64
+from contextlib import contextmanager
 
 from odoo import _
 from odoo.http import request
@@ -102,6 +103,42 @@ def validate_justificatif(filename, content):
 
 class PortailCommon(CustomerPortal):
     """Base commune des contrôleurs du portail (aucune route ici)."""
+
+    # ------------------------------------------------------------------
+    # Écriture d'un formulaire : tout ou rien
+    # ------------------------------------------------------------------
+    @contextmanager
+    def _ecriture_atomique(self):
+        """Annule TOUT ce qu'un formulaire a écrit dès qu'il est refusé.
+
+        Un contrôleur de portail attrape ``UserError``/``ValidationError``
+        pour réafficher la page avec le message : c'est le bon geste côté
+        écran, mais il a un effet de bord que rien ne signale. En temps
+        normal, l'exception remonte jusqu'à la couche HTTP d'Odoo, qui
+        annule la transaction ; attrapée ici, elle ne remonte plus, la
+        requête se termine normalement — et Odoo VALIDE ce que le
+        formulaire avait déjà écrit avant de buter.
+
+        Concrètement, sur une fiche d'évaluation : les taux des premières
+        activités partaient en base, la note fautive arrêtait le reste, et
+        l'écran affichait « refusé » sur une fiche à moitié modifiée. Pire,
+        une valeur hors barème pouvait rester enregistrée : le contrôle de
+        cohérence s'exécute APRÈS l'UPDATE, et c'est le rollback — celui
+        qu'on venait de neutraliser — qui devait l'effacer.
+
+        On enveloppe donc toute écriture de formulaire dans un point de
+        reprise : à la moindre erreur, la base revient exactement à son
+        état d'avant, puis l'exception poursuit sa route vers le
+        ``except`` du contrôleur, qui affiche le message. Le cache de
+        l'ORM est vidé au passage, sans quoi la page réaffichée
+        montrerait des valeurs qui n'existent plus.
+        """
+        try:
+            with request.env.cr.savepoint():
+                yield
+        except Exception:
+            request.env.invalidate_all()
+            raise
 
     # ------------------------------------------------------------------
     # Résolution employé / périmètre du validateur

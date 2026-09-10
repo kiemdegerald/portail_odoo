@@ -355,6 +355,7 @@ class EvCampagne(models.Model):
                     "Tous les agents ciblés ont déjà leur évaluation dans "
                     "cette campagne (%s au total).", len(deja_traites)))
 
+            campagne.grille_id._ev_check_poids()
             campagne._ev_photographier_grille()
             campagne._ev_photographier_echelle()
             campagne._creer_evaluations(a_creer)

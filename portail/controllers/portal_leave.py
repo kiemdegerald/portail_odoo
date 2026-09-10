@@ -202,13 +202,14 @@ class PortailConges(PortailCommon):
                     "private_name": post.get("name") or False,
                 }
                 try:
-                    leave.sudo().write(vals)
-                    # Justificatif(s) ajouté(s) à l'édition (facultatif).
-                    # Lus depuis la requête HTTP : avec un input `multiple`,
-                    # request.params ne conserve qu'un seul fichier par nom.
-                    for file_storage in request.httprequest.files.getlist("justificatif"):
-                        self._attach_leave_file(leave, file_storage)
-                    return request.redirect("/my/leaves?success=edited")
+                    with self._ecriture_atomique():
+                        leave.sudo().write(vals)
+                        # Justificatif(s) ajouté(s) à l'édition (facultatif).
+                        # Lus depuis la requête HTTP : avec un input `multiple`,
+                        # request.params ne conserve qu'un seul fichier par nom.
+                        for file_storage in request.httprequest.files.getlist("justificatif"):
+                            self._attach_leave_file(leave, file_storage)
+                        return request.redirect("/my/leaves?success=edited")
                 except (UserError, ValidationError) as exc:
                     error["global"] = exc.args[0] if exc.args else str(exc)
 
@@ -260,7 +261,8 @@ class PortailConges(PortailCommon):
         except (AccessError, MissingError):
             return request.redirect("/my/leaves")
         try:
-            leave.sudo().unlink()
+            with self._ecriture_atomique():
+                leave.sudo().unlink()
         except (UserError, ValidationError):
             return request.redirect("/my/leaves")
         return request.redirect("/my/leaves?success=cancelled")

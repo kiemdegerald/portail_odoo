@@ -464,9 +464,10 @@ class PortailMission(PortailCommon):
                 self._apply_frais(mission, frais)
                 if post.get("action") == "submit":
                     try:
-                        mission.sudo().action_submit()
-                        return request.redirect(
-                            "/my/missions/%s?success=submitted" % mission.id)
+                        with self._ecriture_atomique():
+                            mission.sudo().action_submit()
+                            return request.redirect(
+                                "/my/missions/%s?success=submitted" % mission.id)
                     except (UserError, ValidationError) as exc:
                         # pas de brouillon fantôme : la demande n'est créée
                         # que si la soumission passe (sinon l'employé
@@ -502,9 +503,10 @@ class PortailMission(PortailCommon):
                 self._apply_frais(mission, frais)
                 if post.get("action") == "submit":
                     try:
-                        mission.sudo().action_submit()
-                        return request.redirect(
-                            "/my/missions/%s?success=submitted" % mission.id)
+                        with self._ecriture_atomique():
+                            mission.sudo().action_submit()
+                            return request.redirect(
+                                "/my/missions/%s?success=submitted" % mission.id)
                     except (UserError, ValidationError) as exc:
                         error["global"] = exc.args[0] if exc.args else str(exc)
                 else:
@@ -528,7 +530,8 @@ class PortailMission(PortailCommon):
         except (AccessError, MissingError):
             return request.redirect("/my/missions")
         try:
-            mission.sudo().action_submit()
+            with self._ecriture_atomique():
+                mission.sudo().action_submit()
         except (UserError, ValidationError) as exc:
             return self._render_mission_detail(
                 mission, error=exc.args[0] if exc.args else str(exc))
@@ -548,8 +551,9 @@ class PortailMission(PortailCommon):
             return request.redirect("/my/missions")
         employee = self._get_portal_employees()[:1]
         try:
-            mission.sudo().with_context(
-                gm_actor_employee_id=employee.id).action_reset_to_draft()
+            with self._ecriture_atomique():
+                mission.sudo().with_context(
+                    gm_actor_employee_id=employee.id).action_reset_to_draft()
         except (UserError, ValidationError) as exc:
             return self._render_mission_detail(
                 mission, error=exc.args[0] if exc.args else str(exc))
@@ -851,20 +855,21 @@ class PortailMission(PortailCommon):
                                            or "").strip() or False,
                 }
                 try:
-                    mission.sudo().write(vals)
-                    # les frais réels n'acceptent l'écriture qu'à l'état
-                    # « returned » : on déclare d'abord, on remplace ensuite.
-                    # Le retour peut déjà avoir été déclaré — le chef
-                    # revient alors seulement compléter ses pièces.
-                    if mission.state == "validated":
-                        mission.sudo().action_declare_return()
-                    else:
-                        # retour déjà déclaré : le chef revient compléter,
-                        # sa déclaration repart à la RH.
-                        mes_membres.sudo()._marquer_declaree()
-                    self._apply_frais_reels(mission, lignes, mes_membres)
-                    return request.redirect(
-                        "/my/missions/%s?success=returned" % mission.id)
+                    with self._ecriture_atomique():
+                        mission.sudo().write(vals)
+                        # les frais réels n'acceptent l'écriture qu'à l'état
+                        # « returned » : on déclare d'abord, on remplace ensuite.
+                        # Le retour peut déjà avoir été déclaré — le chef
+                        # revient alors seulement compléter ses pièces.
+                        if mission.state == "validated":
+                            mission.sudo().action_declare_return()
+                        else:
+                            # retour déjà déclaré : le chef revient compléter,
+                            # sa déclaration repart à la RH.
+                            mes_membres.sudo()._marquer_declaree()
+                        self._apply_frais_reels(mission, lignes, mes_membres)
+                        return request.redirect(
+                            "/my/missions/%s?success=returned" % mission.id)
                 except (UserError, ValidationError) as exc:
                     if mission.state == "returned":
                         mission.sudo().action_back_to_validated()
@@ -1057,9 +1062,10 @@ class PortailMission(PortailCommon):
                     "portail.", employees[:1].name))
                 if post.get("action") == "submit":
                     try:
-                        mission.sudo().action_submit()
-                        return request.redirect(
-                            "/my/team/missions?success=submitted_for")
+                        with self._ecriture_atomique():
+                            mission.sudo().action_submit()
+                            return request.redirect(
+                                "/my/team/missions?success=submitted_for")
                     except (UserError, ValidationError) as exc:
                         mission.frais_ids.sudo().unlink()
                         mission.membre_ids.sudo().unlink()
@@ -1111,14 +1117,15 @@ class PortailMission(PortailCommon):
         mission_ctx = mission.sudo().with_context(
             gm_actor_employee_id=employee.id)
         try:
-            if action == "approve":
-                mission_ctx.action_approve_step(comment=comment)
-            elif action == "refuse":
-                mission_ctx.action_refuse_step(comment=comment)
-            elif action == "send_back":
-                mission_ctx.action_send_back(comment=comment)
-            else:
-                raise UserError(_("Action inconnue."))
+            with self._ecriture_atomique():
+                if action == "approve":
+                    mission_ctx.action_approve_step(comment=comment)
+                elif action == "refuse":
+                    mission_ctx.action_refuse_step(comment=comment)
+                elif action == "send_back":
+                    mission_ctx.action_send_back(comment=comment)
+                else:
+                    raise UserError(_("Action inconnue."))
         except (UserError, ValidationError) as exc:
             return self._render_mission_detail(
                 mission, error=exc.args[0] if exc.args else str(exc),

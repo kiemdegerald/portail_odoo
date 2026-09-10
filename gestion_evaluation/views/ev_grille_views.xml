@@ -53,6 +53,12 @@
                     </div>
                     <group>
                         <group>
+                            <field name="mode_notation" widget="radio"/>
+                            <field name="points_total"
+                                   invisible="mode_notation != 'points'"/>
+                            <field name="poids_total"
+                                   invisible="mode_notation != 'points'"
+                                   decoration-danger="poids_total != 100"/>
                             <field name="nb_criteres"/>
                             <field name="company_id"
                                    groups="base.group_multi_company"/>
@@ -85,13 +91,26 @@
                                 <tree>
                                     <field name="sequence" widget="handle"/>
                                     <field name="name"/>
+                                    <field name="type_section" string="Type"/>
+                                    <field name="poids" string="Poids (%)"/>
+                                    <field name="points_total" string="Points"
+                                           optional="show"/>
                                     <field name="nb_criteres" string="Critères"/>
                                 </tree>
-                                <form string="Bloc">
+                                <form string="Section">
                                     <group>
                                         <field name="name"
-                                               placeholder="ex. Savoir-faire"/>
+                                               placeholder="ex. Conscience professionnelle"/>
+                                        <field name="type_section"/>
+                                        <field name="poids"/>
                                     </group>
+                                    <div class="text-muted"
+                                         invisible="type_section != 'objectifs'">
+                                        Cette section n'a pas de critère : sa
+                                        note vient des taux de réalisation des
+                                        activités, convertis par la grille de
+                                        concordance.
+                                    </div>
                                     <separator string="Thèmes de ce bloc"/>
                                     <p class="text-muted">
                                         Ouvrez un thème pour saisir ses critères.
@@ -107,6 +126,8 @@
                                             <group>
                                                 <field name="name"
                                                        placeholder="ex. Qualités relationnelles"/>
+                                                <field name="mode_notation"
+                                                       invisible="1"/>
                                             </group>
                                             <separator string="Critères notés dans ce thème"/>
                                             <field name="critere_ids">
@@ -118,6 +139,10 @@
                                                     <field name="description"
                                                            string="Précision"
                                                            optional="hide"/>
+                                                    <field name="mode_notation"
+                                                           column_invisible="1"/>
+                                                    <field name="points_max"
+                                                           column_invisible="parent.mode_notation != 'points'"/>
                                                 </tree>
                                             </field>
                                         </form>
@@ -155,6 +180,7 @@
                         <field name="bloc_id" options="{'no_create': True}"/>
                         <field name="name"/>
                         <field name="sequence"/>
+                        <field name="mode_notation" invisible="1"/>
                     </group>
                     <separator string="Critères notés dans ce thème"/>
                     <field name="critere_ids">
@@ -162,6 +188,9 @@
                             <field name="sequence" widget="handle"/>
                             <field name="name"/>
                             <field name="description" optional="hide"/>
+                            <field name="mode_notation" column_invisible="1"/>
+                            <field name="points_max"
+                                   column_invisible="parent.mode_notation != 'points'"/>
                         </tree>
                     </field>
                 </sheet>

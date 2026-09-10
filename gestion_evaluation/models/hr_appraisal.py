@@ -357,15 +357,23 @@ class HrAppraisal(models.Model):
                  "ev_note_ids.valeur_agent", "ev_note_ids.niveau_agent_id",
                  "ev_grille_id",
                  "ev_grille_id.critere_ids.theme_id",
-                 "ev_grille_id.theme_ids.bloc_id")
+                 "ev_grille_id.theme_ids.bloc_id",
+                 "ev_grille_id.mode_notation",
+                 "ev_note_ids.valeur_manager", "ev_note_ids.valeur_agent")
     def _compute_ev_notation(self):
         """Deux notes, même calcul : celle du manager fait foi, celle de
         l'agent sert de comparaison."""
         for appraisal in self:
             lignes = appraisal.sudo().ev_note_ids
             grille = appraisal.sudo().ev_grille_id
-            notees = lignes.filtered(lambda l: l.niveau_manager_id)
-            auto = lignes.filtered(lambda l: l.niveau_agent_id)
+            # En mode Points, la ligne n'a pas de niveau : elle porte
+            # directement une valeur. Sans ce second cas, la notation
+            # comptait zéro ligne notée et la note restait à 0.
+            en_points = grille.mode_notation == "points"
+            notees = lignes.filtered(
+                lambda l: l.valeur_manager if en_points else l.niveau_manager_id)
+            auto = lignes.filtered(
+                lambda l: l.valeur_agent if en_points else l.niveau_agent_id)
             appraisal.ev_nb_criteres = len(lignes)
             appraisal.ev_nb_notes = len(notees)
             appraisal.ev_nb_notes_agent = len(auto)
@@ -516,6 +524,196 @@ class HrAppraisal(models.Model):
                 objectifs = Goal
             appraisal.ev_objectif_ids = objectifs
             appraisal.ev_objectif_count = len(objectifs)
+
+    # ------------------------------------------------------------------
+    # La mesure des activités — le coeur de la fiche
+    # ------------------------------------------------------------------
+    # La mesure appartient à l'ÉVALUATION, pas à l'activité : l'activité
+    # est la commande de janvier, la mesure le constat de décembre. Sans
+    # cette séparation, relancer une campagne sur le même exercice
+    # retrouvait les mesures de la précédente.
+    ev_mesure_ids = fields.One2many(
+        "ev.activite.mesure", "appraisal_id", string="Mesure des activités")
+    ev_activite_ids = fields.Many2many(
+        "ev.objectif.activite", string="Activités de l'exercice",
+        compute="_compute_ev_activites")
+    ev_activites_total = fields.Integer(
+        string="Activités", compute="_compute_ev_activites")
+    ev_activites_mesurees = fields.Integer(
+        string="Activités mesurées", compute="_compute_ev_activites")
+    ev_note_objectifs = fields.Float(
+        string="Note des objectifs", digits=(5, 2),
+        compute="_compute_ev_activites",
+        help="Moyenne des notes des activités mesurées. Toutes les "
+             "activités pèsent pareil.")
+    ev_note_objectifs_max = fields.Float(
+        string="Note maximale des objectifs", digits=(5, 2),
+        compute="_compute_ev_activites",
+        help="La note la plus haute de la grille de concordance : c'est le "
+             "« sur combien » du bloc objectifs.")
+
+    @api.depends("ev_objectif_ids", "ev_objectif_ids.ev_activite_ids",
+                 "ev_mesure_ids.note", "ev_mesure_ids.mesuree")
+    def _compute_ev_activites(self):
+        Table = self.env["ev.taux.note"].sudo()
+        for appraisal in self:
+            activites = appraisal.ev_objectif_ids.ev_activite_ids
+            mesurees = appraisal.ev_mesure_ids.filtered("mesuree")
+            appraisal.ev_activite_ids = activites
+            appraisal.ev_activites_total = len(activites)
+            appraisal.ev_activites_mesurees = len(mesurees)
+            # Moyenne des NOTES, toutes activités confondues : c'est la
+            # règle arrêtée avec la banque, et elle ne repasse pas par
+            # l'objectif — un objectif découpé en quatre activités pèse
+            # quatre fois plus, c'est assumé.
+            appraisal.ev_note_objectifs = (
+                sum(mesurees.mapped("note")) / len(mesurees)
+                if mesurees else 0.0)
+            appraisal.ev_note_objectifs_max = Table.note_maximale(
+                appraisal.company_id or self.env.company)
+
+    def _ev_sync_mesures(self):
+        """Une ligne de mesure par activité de l'exercice.
+
+        Appelée à l'ouverture de l'écran et avant toute saisie : la
+        période peut être rouverte après le lancement de la campagne, et
+        de nouvelles activités apparaître. On ne supprime jamais une
+        ligne déjà renseignée — seulement on complète ce qui manque.
+        """
+        Mesure = self.env["ev.activite.mesure"].sudo()
+        a_creer = []
+        for appraisal in self:
+            existantes = appraisal.ev_mesure_ids.activite_id
+            for activite in appraisal.ev_objectif_ids.ev_activite_ids:
+                if activite not in existantes:
+                    a_creer.append({"appraisal_id": appraisal.id,
+                                    "activite_id": activite.id})
+        if a_creer:
+            Mesure.create(a_creer)
+        return self.ev_mesure_ids
+
+    def _ev_check_mesure(self):
+        """Qui peut mesurer, et quand : exactement les mêmes conditions que
+        la notation du responsable. Mesurer, c'est noter."""
+        self.ensure_one()
+        motif = self._ev_motif_notation_fermee(colonne="manager")
+        if motif:
+            raise UserError(motif)
+
+    def _ev_mesurer(self, valeurs):
+        """Reporte la saisie du formulaire sur les mesures.
+
+        `valeurs` porte, par mesure : `atteint_<id>` et `taux_<id>`.
+        On ne touche QU'AUX mesures de cette évaluation — un identifiant
+        venu d'ailleurs n'atteint rien.
+        """
+        self.ensure_one()
+        self._ev_check_mesure()
+        self._ev_sync_mesures()
+        for mesure in self.ev_mesure_ids:
+            ecriture = {}
+            atteint = valeurs.get("atteint_%s" % mesure.id)
+            if atteint is not None:
+                ecriture["resultat_atteint"] = atteint.strip() or False
+            brut = (valeurs.get("taux_%s" % mesure.id) or "").strip()
+            if brut:
+                brut = brut.replace(",", ".").replace("%", "").strip()
+                try:
+                    taux = float(brut)
+                except ValueError:
+                    raise UserError(_(
+                        "Taux de réalisation invalide pour « %(act)s » : "
+                        "« %(val)s ». Attendu un nombre entre 0 et 100.",
+                        act=mesure.name or "", val=brut))
+                ecriture["taux_realisation"] = taux
+            if ecriture:
+                mesure.sudo().write(ecriture)
+
+    def _ev_mesures_par_objectif(self):
+        """Les mesures regroupées par objectif : [(objectif, mesures)]."""
+        self.ensure_one()
+        self._ev_sync_mesures()
+        groupes = []
+        for objectif in self.ev_objectif_ids:
+            groupes.append((objectif, self.ev_mesure_ids.filtered(
+                lambda m: m.goal_id == objectif)))
+        return groupes
+
+    ev_note_finale = fields.Float(
+        string="Note globale", digits=(5, 2),
+        compute="_compute_ev_note_finale",
+        help="Somme pondérée des sections, ramenée sur 20.")
+    ev_note_finale_max = fields.Float(
+        string="Note globale maximale", digits=(5, 2),
+        compute="_compute_ev_note_finale")
+    ev_note_finale_pct = fields.Float(
+        string="Note globale (%)", digits=(5, 2),
+        compute="_compute_ev_note_finale")
+    ev_note_finale_sur10 = fields.Float(
+        string="Note ramenée sur 10", digits=(5, 2),
+        compute="_compute_ev_note_finale")
+    ev_notation_en_points = fields.Boolean(
+        string="Notation en points", compute="_compute_ev_note_finale",
+        help="La grille de cette évaluation se note-t-elle en points ?")
+
+    # La note finale est arrêtée sur 20 : c'est le format de la fiche de
+    # la banque. Le passage par les pourcentages permet à la RH d'ajouter
+    # une section sans que le barème se déforme.
+    EV_NOTE_SUR = 20.0
+
+    def _ev_sections(self):
+        """Le détail de la fiche, section par section.
+
+        Renvoie une liste de dictionnaires : le bloc, ce qui a été obtenu,
+        le maximum de la section, le score ramené sur 100, le poids, et
+        les points que la section rapporte à la note finale.
+
+        Deux natures de section :
+        * OBJECTIFS — pas de critère ; le score vient des taux de
+          réalisation, convertis par la grille de concordance ;
+        * QUESTIONS — les critères rédigés par la RH, notés en points.
+        """
+        self.ensure_one()
+        notes = {l.critere_id.id: l.valeur_manager for l in self.ev_note_ids}
+        sections = []
+        for bloc in self.ev_grille_id.bloc_ids:
+            if bloc.type_section == "objectifs":
+                obtenu = self.ev_note_objectifs
+                maximum = self.ev_note_objectifs_max
+            else:
+                obtenu = sum(notes.get(c.id) or 0.0
+                             for c in bloc.theme_ids.critere_ids)
+                maximum = bloc.points_total
+            pct = (obtenu * 100.0 / maximum) if maximum else 0.0
+            sections.append({
+                "bloc": bloc,
+                "obtenu": obtenu,
+                "maximum": maximum,
+                "pourcentage": pct,
+                "poids": bloc.poids,
+                "apport": pct * bloc.poids / 100.0,
+            })
+        return sections
+
+    @api.depends("ev_note_globale", "ev_note_objectifs",
+                 "ev_note_objectifs_max", "ev_grille_id.mode_notation",
+                 "ev_grille_id.bloc_ids.poids",
+                 "ev_note_ids.valeur_manager")
+    def _compute_ev_note_finale(self):
+        for appraisal in self:
+            en_points = appraisal.ev_grille_id.mode_notation == "points"
+            appraisal.ev_notation_en_points = en_points
+            if not en_points:
+                appraisal.ev_note_finale = 0.0
+                appraisal.ev_note_finale_max = 0.0
+                appraisal.ev_note_finale_pct = 0.0
+                appraisal.ev_note_finale_sur10 = 0.0
+                continue
+            pct = sum(s["apport"] for s in appraisal._ev_sections())
+            appraisal.ev_note_finale_pct = pct
+            appraisal.ev_note_finale_max = self.EV_NOTE_SUR
+            appraisal.ev_note_finale = pct * self.EV_NOTE_SUR / 100.0
+            appraisal.ev_note_finale_sur10 = pct / 10.0
 
     def _ev_motif_objectifs_fermes(self):
         """None si l'utilisateur peut fixer les objectifs de cet agent,
@@ -1250,15 +1448,35 @@ class HrAppraisal(models.Model):
         motif = self._ev_motif_notation_fermee(colonne=colonne)
         if motif:
             raise UserError(motif)
+        # Ce qui manque est annoncé EN UNE FOIS. Refuser sur les
+        # critères, puis — une fois corrigés — refuser à nouveau sur les
+        # activités, ferait recommencer le responsable deux fois pour la
+        # même fiche.
+        manques = []
         if self.sudo().ev_grille_id:
             manquants = (self.ev_nb_criteres
                          - (self.ev_nb_notes_agent if colonne == "agent"
                             else self.ev_nb_notes))
             if manquants > 0:
-                raise UserError(_(
-                    "Il reste %(nb)s critère(s) à apprécier sur %(total)s. "
-                    "Complétez la grille avant de publier.",
+                manques.append(_(
+                    "%(nb)s question(s) à noter sur %(total)s",
                     nb=manquants, total=self.ev_nb_criteres))
+        # Les objectifs pèsent le plus lourd de la fiche : publier en
+        # ayant oublié d'en mesurer revient à noter zéro sur cette part
+        # sans l'avoir voulu. L'agent, lui, ne mesure rien : ce contrôle
+        # ne vise que le responsable.
+        if colonne != "agent" and self.sudo().ev_activites_total:
+            reste = (self.sudo().ev_activites_total
+                     - self.sudo().ev_activites_mesurees)
+            if reste > 0:
+                manques.append(_(
+                    "%(nb)s activité(s) à mesurer sur %(total)s",
+                    nb=reste, total=self.sudo().ev_activites_total))
+        if manques:
+            raise UserError(_(
+                "La fiche n'est pas complète : il reste %(manques)s. "
+                "Complétez-la avant de publier.",
+                manques=" et ".join(str(m) for m in manques)))
         champ = ("employee_feedback_published" if colonne == "agent"
                  else "manager_feedback_published")
         self.sudo().write({champ: True})

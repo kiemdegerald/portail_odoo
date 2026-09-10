@@ -3,7 +3,9 @@ from . import ev_grille
 from . import ev_notation
 from . import ev_circuit
 from . import ev_periode_objectifs
+from . import ev_taux_note
 from . import ev_objectif_activite
+from . import ev_activite_mesure
 from . import ev_campagne
 from . import ev_export
 from . import hr_appraisal

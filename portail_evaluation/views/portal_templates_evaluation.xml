@@ -13,7 +13,7 @@
                 <t t-set="placeholder_count" t-value="'appraisal_count'"/>
             </t>
             <t t-if="portail_is_evaluateur" t-call="portal.portal_docs_entry">
-                <t t-set="title">Évaluations à mener</t>
+                <t t-set="title">Évaluations de mon équipe</t>
                 <t t-set="url" t-value="'/my/team/evaluations'"/>
                 <t t-set="text">Noter mes collaborateurs et suivre leur entretien</t>
                 <t t-set="config_card" t-value="True"/>
@@ -47,8 +47,8 @@
                 <t t-esc="appraisal.ev_campagne_id.name or 'Évaluation'"/>
             </li>
             <li t-if="page_name == 'team_appraisal'" class="breadcrumb-item">
-                <a t-if="appraisal" href="/my/team/evaluations">Évaluations à mener</a>
-                <t t-else="">Évaluations à mener</t>
+                <a t-if="appraisal" href="/my/team/evaluations">Évaluations de mon équipe</a>
+                <t t-else="">Évaluations de mon équipe</t>
             </li>
             <li t-if="page_name == 'team_appraisal' and appraisal" class="breadcrumb-item active">
                 <t t-esc="appraisal.employee_id.name"/>
@@ -350,7 +350,7 @@
                             <t t-out="obj.description"/>
                         </div>
                     </div>
-                    <form t-if="periode.ouverte" method="post"
+                    <form t-if="saisie_ouverte" method="post"
                           t-attf-action="/my/objectifs/#{periode.id}/#{agent.id}">
                         <input type="hidden" name="csrf_token"
                                t-att-value="request.csrf_token()"/>
@@ -391,7 +391,7 @@
                                     </span>
                                 </td>
                                 <td class="text-end">
-                                    <form t-if="periode.ouverte" method="post"
+                                    <form t-if="saisie_ouverte" method="post"
                                           t-attf-action="/my/objectifs/#{periode.id}/#{agent.id}">
                                         <input type="hidden" name="csrf_token"
                                                t-att-value="request.csrf_token()"/>
@@ -410,7 +410,7 @@
                         </tbody>
                     </table>
 
-                    <form t-if="periode.ouverte" method="post"
+                    <form t-if="saisie_ouverte" method="post"
                           t-attf-action="/my/objectifs/#{periode.id}/#{agent.id}"
                           class="row g-2">
                         <input type="hidden" name="csrf_token"
@@ -439,7 +439,7 @@
 
             <!-- L'ajout d'un objectif, à part : c'est un geste d'une autre
                  nature que la saisie des activités. -->
-            <div t-if="periode.ouverte" class="card mb-4">
+            <div t-if="saisie_ouverte" class="card mb-4">
                 <div class="card-header fw-bold">Ajouter un objectif</div>
                 <div class="card-body">
                     <form method="post"
@@ -469,6 +469,75 @@
                             </button>
                         </div>
                     </form>
+                </div>
+            </div>
+
+            <!-- Recopier vers d'autres collaborateurs. Dans une même
+                 équipe, plusieurs agents portent souvent la même
+                 commande : les ressaisir un par un est long, et les
+                 écarts de formulation rendent ensuite les notes
+                 incomparables. -->
+            <div t-if="saisie_ouverte and objectifs"
+                 class="card mb-4">
+                <div class="card-header fw-bold">
+                    Recopier ces objectifs vers un autre collaborateur
+                </div>
+                <div class="card-body">
+                    <div t-if="not autres_agents" class="alert alert-secondary mb-0"
+                         role="alert">
+                        <t t-esc="agent.name"/> est votre seul collaborateur
+                        visé par cette période : il n'y a personne vers qui
+                        recopier. Pour partager ces objectifs avec d'autres
+                        agents, demandez au service RH d'élargir la
+                        population visée par
+                        « <t t-esc="periode.name"/> ».
+                    </div>
+                    <t t-else="">
+                    <p class="text-muted small">
+                        Les objectifs de <t t-esc="agent.name"/>, leurs
+                        activités et les résultats attendus sont recopiés
+                        tels quels. Vous pourrez ensuite les ajuster
+                        collaborateur par collaborateur. Un objectif que
+                        l'agent porte déjà n'est pas recopié une seconde
+                        fois.
+                    </p>
+                    <form method="post"
+                          t-attf-action="/my/objectifs/#{periode.id}/#{agent.id}">
+                        <input type="hidden" name="csrf_token"
+                               t-att-value="request.csrf_token()"/>
+                        <input type="hidden" name="action"
+                               value="goals_duplicate"/>
+                        <div class="row g-2">
+                            <div t-foreach="autres_agents" t-as="ligne"
+                                 class="col-md-6">
+                                <t t-set="autre" t-value="ligne[0]"/>
+                                <t t-set="nb" t-value="ligne[1]"/>
+                                <div class="form-check">
+                                    <input class="form-check-input"
+                                           type="checkbox" name="cible_ids"
+                                           t-att-value="autre.id"
+                                           t-attf-id="cible_#{autre.id}"/>
+                                    <label class="form-check-label"
+                                           t-attf-for="cible_#{autre.id}">
+                                        <t t-esc="autre.name"/>
+                                        <span t-if="nb" class="text-muted small">
+                                            — a déjà <t t-esc="nb"/> objectif(s)
+                                        </span>
+                                        <span t-else="" class="text-muted small">
+                                            — aucun objectif
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <button type="submit"
+                                    class="btn btn-sm btn-outline-primary">
+                                <i class="fa fa-copy"/> Recopier les objectifs
+                            </button>
+                        </div>
+                    </form>
+                    </t>
                 </div>
             </div>
         </t>
@@ -540,75 +609,255 @@
          N+2 qui statue — seuls les intitulés de colonnes changent.
          La visibilité de chaque colonne reste décidée par le module
          métier (`ev_voir_notes_agent` / `ev_voir_notes_manager`). -->
-    <template id="portal_appraisal_grid" name="Portail : grille notée">
-        <t t-if="appraisal.ev_grille_id">
-            <h5 class="mt-4"><t t-esc="appraisal.ev_grille_id.name"/></h5>
-            <t t-set="notes"
-               t-value="{l.critere_id.id: l for l in appraisal.ev_note_ids}"/>
-            <t t-set="val_agent"
-               t-value="{l.critere_id.id: l.valeur_agent for l in appraisal.ev_note_ids if l.niveau_agent_id}"/>
-            <t t-set="val_manager"
-               t-value="{l.critere_id.id: l.valeur_manager for l in appraisal.ev_note_ids if l.niveau_manager_id}"/>
-            <div class="table-responsive">
-                <table class="table table-sm table-striped">
-                    <thead>
-                        <tr class="active">
-                            <th>Bloc / Thème / Critère</th>
-                            <th t-if="vue.ev_voir_notes_agent" class="text-end">
-                                <t t-esc="libelle_agent"/>
-                            </th>
-                            <th t-if="vue.ev_voir_notes_manager" class="text-end">
-                                <t t-esc="libelle_manager"/>
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <t t-foreach="appraisal.ev_grille_id.bloc_ids" t-as="bloc">
-                            <tr>
-                                <td><strong t-esc="bloc.name"/></td>
-                                <td t-if="vue.ev_voir_notes_agent" class="text-end">
-                                    <t t-set="s" t-value="bloc._score(val_agent)"/>
-                                    <strong t-esc="'%.2f' % s if s is not None else '—'"/>
-                                </td>
-                                <td t-if="vue.ev_voir_notes_manager" class="text-end">
-                                    <t t-set="s" t-value="bloc._score(val_manager)"/>
-                                    <strong t-esc="'%.2f' % s if s is not None else '—'"/>
-                                </td>
+    <!-- ===================== La fiche d'évaluation =====================
+         Un seul gabarit pour les deux écrans : le responsable la
+         remplit, le collaborateur la lit une fois publiée. L'appelant
+         pose `modifiable` — rien d'autre ne change d'un écran à
+         l'autre, et les deux affichent donc exactement la même note. -->
+    <template id="portal_fiche_evaluation" name="Portail : fiche d'évaluation">
+        <t t-set="notes"
+           t-value="{l.critere_id.id: l for l in appraisal.ev_note_ids}"/>
+        <t t-set="groupes"
+           t-value="appraisal._ev_mesures_par_objectif()"/>
+
+        <t t-foreach="appraisal._ev_sections()" t-as="sec">
+            <t t-set="bloc" t-value="sec['bloc']"/>
+
+            <!-- L'en-tête de section porte son poids et où
+                 elle en est : le responsable sait à tout
+                 moment ce que cette partie pèse. -->
+            <div class="d-flex justify-content-between align-items-baseline border-bottom mt-4 mb-2 pb-1">
+                <h6 class="mb-0">
+                    <strong t-esc="bloc.name"/>
+                    <span class="text-muted ms-2">
+                        <t t-esc="'%g' % bloc.poids"/> % de la note
+                    </span>
+                </h6>
+                <span class="text-muted small">
+                    <t t-esc="'%.1f' % sec['obtenu']"/>
+                    / <t t-esc="'%g' % sec['maximum']"/>
+                </span>
+            </div>
+
+            <!-- Section OBJECTIFS -->
+            <t t-if="bloc.type_section == 'objectifs'">
+                <t t-if="not groupes">
+                    <div class="alert alert-warning py-2" role="alert">
+                        Aucun objectif n'a été fixé à
+                        <t t-esc="appraisal.employee_id.name"/>
+                        pour cet exercice : cette section
+                        vaudra zéro. Demandez au service RH
+                        de rouvrir la période de fixation.
+                    </div>
+                </t>
+                <p t-else="" class="text-muted small">
+                    Constatez ce qui a été fait et posez un
+                    taux : la note se calcule toute seule à
+                    partir de la grille de concordance.
+                    <t t-if="appraisal.ev_activites_mesurees &lt; appraisal.ev_activites_total">
+                        <strong>
+                            <t t-esc="appraisal.ev_activites_mesurees"/>
+                            sur <t t-esc="appraisal.ev_activites_total"/>
+                            activités mesurées
+                        </strong>
+                        — les autres ne comptent pas dans la note.
+                    </t>
+                </p>
+
+                <div t-foreach="groupes" t-as="groupe" class="card mb-3">
+                    <t t-set="goal" t-value="groupe[0]"/>
+                    <t t-set="mesures" t-value="groupe[1]"/>
+                    <t t-set="mesurees" t-value="mesures.filtered('mesuree')"/>
+                    <div class="card-header d-flex justify-content-between align-items-start gap-3">
+                        <div>
+                            <strong t-esc="goal.name"/>
+                            <div t-if="goal.description"
+                                 class="text-muted small"
+                                 t-field="goal.description"/>
+                            <div class="text-muted small">
+                                <t t-if="goal.deadline">
+                                    Échéance <span t-field="goal.deadline"/> —
+                                </t>
+                                Avancement déclaré :
+                                <span t-field="goal.progression"/>
+                            </div>
+                        </div>
+                        <div t-if="mesurees" class="text-end fw-bold">
+                            <t t-esc="'%.1f' % (sum(mesurees.mapped('note')) / len(mesurees))"/>
+                            <span class="text-muted fw-normal">
+                                / <t t-esc="'%g' % appraisal.ev_note_objectifs_max"/>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <t t-if="not mesures">
+                            <div class="alert alert-warning py-2 mb-0" role="alert">
+                                Aucune activité n'a été définie
+                                sous cet objectif : il ne peut
+                                pas être noté.
+                            </div>
+                        </t>
+                        <div t-else="" class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr class="active">
+                                        <th style="width: 24%;">Activité</th>
+                                        <th style="width: 24%;">Résultat attendu</th>
+                                        <th>Résultat atteint</th>
+                                        <th style="width: 7rem;">Taux (%)</th>
+                                        <th style="width: 5rem;" class="text-center">Note</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr t-foreach="mesures" t-as="act">
+                                        <td><t t-esc="act.name"/></td>
+                                        <td class="text-muted">
+                                            <t t-if="act.resultat_attendu">
+                                                <t t-esc="act.resultat_attendu"/>
+                                            </t>
+                                            <span t-else="">—</span>
+                                        </td>
+                                        <td>
+                                            <textarea t-if="modifiable"
+                                                      t-attf-name="atteint_#{act.id}"
+                                                      class="form-control form-control-sm"
+                                                      rows="2"
+                                                      placeholder="Ce qui a réellement été fait"><t t-esc="act.resultat_atteint or ''"/></textarea>
+                                            <t t-else="">
+                                                <t t-if="act.resultat_atteint">
+                                                    <t t-esc="act.resultat_atteint"/>
+                                                </t>
+                                                <span t-else="" class="text-muted">—</span>
+                                            </t>
+                                        </td>
+                                        <td>
+                                            <input t-if="modifiable"
+                                                   type="number" min="0" max="100" step="0.01"
+                                                   t-attf-name="taux_#{act.id}"
+                                                   class="form-control form-control-sm text-end"
+                                                   t-att-value="('%g' % act.taux_realisation) if act.mesuree else ''"
+                                                   placeholder="0"/>
+                                            <t t-else="">
+                                                <t t-if="act.mesuree">
+                                                    <t t-esc="'%g' % act.taux_realisation"/> %
+                                                </t>
+                                                <span t-else="" class="text-muted">—</span>
+                                            </t>
+                                        </td>
+                                        <td class="text-center fw-bold">
+                                            <t t-if="act.mesuree">
+                                                <t t-esc="'%g' % act.note"/>
+                                            </t>
+                                            <span t-else="" class="text-muted">—</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </t>
+
+            <!-- Section QUESTIONS NOTEES -->
+            <t t-else="">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr class="active">
+                                <th>Question</th>
+                                <th style="width: 9rem;" class="text-end">Note</th>
                             </tr>
+                        </thead>
+                        <tbody>
                             <t t-foreach="bloc.theme_ids" t-as="theme">
-                                <tr>
-                                    <td style="padding-left:2rem"><em t-esc="theme.name"/></td>
-                                    <td t-if="vue.ev_voir_notes_agent" class="text-end"/>
-                                    <td t-if="vue.ev_voir_notes_manager" class="text-end"/>
-                                </tr>
-                                <tr t-foreach="theme.critere_ids" t-as="critere" class="text-muted">
-                                    <td style="padding-left:4rem"><t t-esc="critere.name"/></td>
-                                    <td t-if="vue.ev_voir_notes_agent" class="text-end">
-                                        <t t-esc="notes[critere.id].niveau_agent_id.name if critere.id in notes and notes[critere.id].niveau_agent_id else '—'"/>
+                                <tr t-foreach="theme.critere_ids" t-as="critere">
+                                    <t t-set="ligne" t-value="notes.get(critere.id)"/>
+                                    <td>
+                                        <t t-esc="critere.name"/>
+                                        <div t-if="critere.description"
+                                             class="text-muted small"
+                                             t-esc="critere.description"/>
+                                        <div t-if="vue.ev_voir_notes_agent and ligne and ligne.valeur_agent"
+                                             class="text-muted small">
+                                            Auto-évaluation :
+                                            <t t-esc="'%g' % ligne.valeur_agent"/>
+                                        </div>
                                     </td>
-                                    <td t-if="vue.ev_voir_notes_manager" class="text-end">
-                                        <t t-esc="notes[critere.id].niveau_manager_id.name if critere.id in notes and notes[critere.id].niveau_manager_id else '—'"/>
+                                    <td class="text-end">
+                                        <div class="d-flex align-items-center justify-content-end gap-2">
+                                            <input t-if="ligne and modifiable"
+                                                   type="number" min="0"
+                                                   t-att-max="critere.points_max"
+                                                   step="0.5"
+                                                   class="form-control form-control-sm text-end"
+                                                   style="max-width: 6rem;"
+                                                   t-attf-name="points_#{ligne.id}"
+                                                   t-att-value="('%g' % ligne.valeur_manager) if ligne.valeur_manager else ''"
+                                                   placeholder="0"/>
+                                            <span t-elif="ligne" class="fw-bold">
+                                                <t t-esc="'%g' % ligne.valeur_manager"/>
+                                            </span>
+                                            <span class="text-muted">
+                                                / <t t-esc="'%g' % critere.points_max"/>
+                                            </span>
+                                        </div>
                                     </td>
                                 </tr>
                             </t>
-                        </t>
-                        <tr>
-                            <td><strong>NOTE GLOBALE</strong></td>
-                            <td t-if="vue.ev_voir_notes_agent" class="text-end">
-                                <strong t-esc="'%.2f' % appraisal.ev_note_agent"/>
-                            </td>
-                            <td t-if="vue.ev_voir_notes_manager" class="text-end">
-                                <strong t-esc="'%.2f' % appraisal.ev_note_globale"/>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <p t-if="not vue.ev_voir_notes_manager and attente_manager"
-               class="text-muted">
-                <t t-esc="attente_manager"/>
-            </p>
+                        </tbody>
+                    </table>
+                </div>
+            </t>
         </t>
+
+        <!-- Le recapitulatif -->
+        <h6 class="mt-4">Récapitulatif</h6>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle"
+                   style="max-width: 46rem;">
+                <thead>
+                    <tr class="active">
+                        <th>Section</th>
+                        <th class="text-end">Obtenu</th>
+                        <th class="text-end">Sur 100</th>
+                        <th class="text-end">Poids</th>
+                        <th class="text-end">Apport</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr t-foreach="appraisal._ev_sections()" t-as="sec">
+                        <td><t t-esc="sec['bloc'].name"/></td>
+                        <td class="text-end">
+                            <t t-esc="'%.1f' % sec['obtenu']"/>
+                            / <t t-esc="'%g' % sec['maximum']"/>
+                        </td>
+                        <td class="text-end">
+                            <t t-esc="'%.1f' % sec['pourcentage']"/> %
+                        </td>
+                        <td class="text-end text-muted">
+                            <t t-esc="'%g' % sec['poids']"/> %
+                        </td>
+                        <td class="text-end fw-bold">
+                            <t t-esc="'%.1f' % sec['apport']"/>
+                        </td>
+                    </tr>
+                    <tr class="table-active">
+                        <td class="fw-bold" colspan="4">Note globale</td>
+                        <td class="text-end fw-bold">
+                            <t t-esc="'%.1f' % appraisal.ev_note_finale"/>
+                            / <t t-esc="'%g' % appraisal.ev_note_finale_max"/>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="text-muted small">
+            Chaque section donne un score sur 100 ; la note
+            finale est la somme de leurs apports, ramenée sur
+            <t t-esc="'%g' % appraisal.ev_note_finale_max"/> —
+            soit <t t-esc="'%.1f' % appraisal.ev_note_finale_sur10"/> / 10.
+            Les totaux se mettent à jour après enregistrement.
+        </p>
     </template>
 
     <!-- ===================== Détail d'une évaluation ===================== -->
@@ -641,7 +890,7 @@
                     </div>
 
                     <!-- Invitation à s'auto-évaluer -->
-                    <div t-if="vue.ev_auto_modifiable" class="alert alert-info" role="alert">
+                    <div t-if="afficher_grille and vue.ev_auto_modifiable" class="alert alert-info" role="alert">
                         <strong>C'est à vous.</strong>
                         Remplissez votre auto-évaluation sur la grille de la
                         campagne, puis publiez-la : votre responsable ne la
@@ -783,15 +1032,28 @@
                         </p>
                     </form>
 
-                    <!-- Notation : les colonnes suivent les règles de
-                         visibilité du module métier -->
-                    <t t-call="portail_evaluation.portal_appraisal_grid">
-                        <t t-set="libelle_agent">Mon appréciation</t>
-                        <t t-set="libelle_manager">Mon responsable</t>
-                        <t t-set="attente_manager">
-                            L'appréciation de votre responsable ne s'affichera
-                            qu'une fois qu'il l'aura publiée.
+                    <!-- La fiche telle que le responsable l'a remplie.
+                         Tant qu'il ne l'a pas publiée, on le dit : une
+                         fiche vide sans un mot d'explication se lit
+                         comme une note de zéro. -->
+                    <t t-if="appraisal.ev_grille_id">
+                        <h5 class="mt-4">
+                            Ma fiche d'évaluation
+                            <span class="text-muted">
+                                — <t t-esc="appraisal.ev_grille_id.name"/>
+                            </span>
+                        </h5>
+                        <t t-if="vue.ev_voir_notes_manager">
+                            <t t-call="portail_evaluation.portal_fiche_evaluation">
+                                <t t-set="modifiable" t-value="False"/>
+                            </t>
                         </t>
+                        <div t-else="" class="alert alert-info" role="alert">
+                            Votre responsable n'a pas encore publié sa
+                            notation. Vous verrez ici votre fiche complète —
+                            objectifs, questions et note globale — dès qu'il
+                            l'aura fait.
+                        </div>
                     </t>
 
                     <t t-if="vue.ev_voir_notes_agent and appraisal.employee_feedback">
@@ -893,11 +1155,11 @@
     </template>
 
     <!-- ============== Espace évaluateur : liste ============== -->
-    <template id="portal_team_appraisals" name="Évaluations à mener">
+    <template id="portal_team_appraisals" name="Évaluations de mon équipe">
         <t t-call="portal.portal_layout">
             <t t-set="breadcrumbs_searchbar" t-value="True"/>
             <t t-call="portal.portal_searchbar">
-                <t t-set="title">Évaluations à mener</t>
+                <t t-set="title">Évaluations de mon équipe</t>
             </t>
 
             <div t-if="success_message" class="alert alert-success mt-3" role="alert">
@@ -1040,163 +1302,33 @@
                         <div t-field="appraisal.employee_feedback"/>
                     </t>
 
-                    <!-- ===== Objectifs de l'exercice =====
-                         Chaque objectif porte son propre formulaire de
-                         retrait : un formulaire HTML ne s'imbrique pas, et
-                         il faut pouvoir désigner UNE ligne à la fois. -->
-                    <h5 class="mt-4">Objectifs de l'exercice</h5>
-                    <t t-if="not appraisal.ev_objectif_ids">
+                    <!-- ================= LA FICHE =================
+                         Une seule fiche, un seul enregistrement : les
+                         sections dans l'ordre, chacune avec son poids.
+                         Deux formulaires séparés faisaient perdre la
+                         saisie de l'un quand on enregistrait l'autre. -->
+                    <h5 class="mt-4">
+                        Fiche d'évaluation
+                        <span t-if="appraisal.ev_grille_id" class="text-muted">
+                            — <t t-esc="appraisal.ev_grille_id.name"/>
+                        </span>
+                    </h5>
+
+                    <t t-if="not appraisal.ev_grille_id">
                         <div class="alert alert-warning" role="alert">
-                            Aucun objectif n'est encore fixé pour cet exercice.
+                            Aucune fiche n'est rattachée à cette campagne.
                         </div>
                     </t>
-                    <div t-if="appraisal.ev_objectif_ids" class="table-responsive">
-                        <table class="table table-sm align-middle">
-                            <thead>
-                                <tr class="active">
-                                    <th>Objectif</th>
-                                    <th style="width: 8rem;">Échéance</th>
-                                    <th style="width: 8rem;">Avancement</th>
-                                    <th t-if="vue.ev_objectifs_modifiable" style="width: 4rem;"/>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr t-foreach="appraisal.ev_objectif_ids" t-as="goal">
-                                    <td>
-                                        <strong t-esc="goal.name"/>
-                                        <div t-if="goal.description"
-                                             class="text-muted small"
-                                             t-field="goal.description"/>
-                                    </td>
-                                    <td>
-                                        <span t-if="goal.deadline" t-field="goal.deadline"/>
-                                        <span t-else="" class="text-muted">—</span>
-                                    </td>
-                                    <td><span t-field="goal.progression"/></td>
-                                    <td t-if="vue.ev_objectifs_modifiable" class="text-end">
-                                        <form method="post"
-                                              t-attf-action="/my/team/evaluations/#{appraisal.id}">
-                                            <input type="hidden" name="csrf_token"
-                                                   t-att-value="request.csrf_token()"/>
-                                            <input type="hidden" name="goal_id"
-                                                   t-att-value="goal.id"/>
-                                            <button type="submit" name="action"
-                                                    value="goal_remove"
-                                                    class="btn btn-sm btn-link text-danger p-0"
-                                                    title="Retirer cet objectif"
-                                                    onclick="return confirm('Retirer cet objectif ?');">
-                                                <i class="fa fa-trash"/>
-                                            </button>
-                                        </form>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
 
-                    <form t-if="vue.ev_objectifs_modifiable" method="post"
-                          class="border rounded p-3 mb-3"
+                    <form t-if="appraisal.ev_grille_id" method="post"
+                          enctype="multipart/form-data"
                           t-attf-action="/my/team/evaluations/#{appraisal.id}">
-                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                        <div class="row">
-                            <div class="col-12 col-md-8 mb-2">
-                                <label class="form-label" for="goal_name">
-                                    Nouvel objectif
-                                </label>
-                                <input type="text" name="goal_name" id="goal_name"
-                                       class="form-control" required="required"
-                                       placeholder="Ce que vous attendez de votre collaborateur cette année"/>
-                            </div>
-                            <div class="col-12 col-md-4 mb-2">
-                                <label class="form-label" for="goal_deadline">
-                                    Échéance
-                                    <span class="text-muted small">(facultative)</span>
-                                </label>
-                                <input type="date" name="goal_deadline"
-                                       id="goal_deadline" class="form-control"/>
-                            </div>
-                        </div>
-                        <div class="mb-2">
-                            <label class="form-label" for="goal_description">
-                                Précisions
-                                <span class="text-muted small">(facultatives)</span>
-                            </label>
-                            <textarea name="goal_description" id="goal_description"
-                                      class="form-control" rows="2"
-                                      placeholder="Résultat attendu, moyens, indicateur de réussite..."/>
-                        </div>
-                        <button type="submit" name="action" value="goal_add"
-                                class="btn btn-primary btn-sm">
-                            <i class="fa fa-plus"/> Ajouter l'objectif
-                        </button>
-                    </form>
-                    <p t-if="not vue.ev_objectifs_modifiable and motif_objectifs"
-                       class="text-muted small">
-                        <i class="fa fa-lock"/> <t t-esc="motif_objectifs"/>
-                    </p>
-
-                    <!-- Quand l'évaluateur ne note pas — le N+2 qui
-                         statue, ou le responsable une fois sa notation
-                         publiée — on montre les DEUX colonnes côte à
-                         côte, en lecture. Un formulaire grisé de quinze
-                         listes déroulantes ne se lit pas. -->
-                    <!-- Une grille en lecture s'explique : soit la
-                         notation est publiée, soit ce n'est pas encore le
-                         moment. Sans un mot, l'évaluateur croit à une
-                         panne. -->
-                    <div t-if="not vue.ev_notation_modifiable and motif_notation and not appraisal.manager_feedback_published"
-                         class="alert alert-info" role="alert">
-                        <i class="fa fa-lock"/>
-                        <strong>Vous ne pouvez pas noter pour l'instant.</strong>
-                        <div class="mt-1"><t t-esc="motif_notation"/></div>
-                    </div>
-
-                    <t t-if="not vue.ev_notation_modifiable">
-                        <t t-call="portail_evaluation.portal_appraisal_grid">
-                            <t t-set="libelle_agent">Auto-évaluation</t>
-                            <t t-set="libelle_manager">Note du responsable</t>
-                            <t t-set="attente_manager"/>
+                        <input type="hidden" name="csrf_token"
+                               t-att-value="request.csrf_token()"/>
+                        <t t-call="portail_evaluation.portal_fiche_evaluation">
+                            <t t-set="modifiable"
+                               t-value="vue.ev_notation_modifiable"/>
                         </t>
-                        <t t-if="vue.ev_voir_notes_manager and appraisal.manager_feedback">
-                            <h5 class="mt-4">Commentaires du responsable</h5>
-                            <div t-field="appraisal.manager_feedback"/>
-                        </t>
-                    </t>
-
-                    <form method="post" enctype="multipart/form-data"
-                          t-attf-action="/my/team/evaluations/#{appraisal.id}">
-                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-
-                        <t t-if="vue.ev_notation_modifiable and appraisal.ev_grille_id">
-                            <h5 class="mt-4"><t t-esc="appraisal.ev_grille_id.name"/></h5>
-                            <t t-set="notes"
-                               t-value="{l.critere_id.id: l for l in appraisal.ev_note_ids}"/>
-                            <t t-foreach="appraisal.ev_grille_id.bloc_ids" t-as="bloc">
-                                <h6 class="mt-3"><strong t-esc="bloc.name"/></h6>
-                                <t t-foreach="bloc.theme_ids" t-as="theme">
-                                    <p class="text-muted mb-1"><em t-esc="theme.name"/></p>
-                                    <div class="mb-3" t-foreach="theme.critere_ids" t-as="critere">
-                                        <t t-set="ligne" t-value="notes.get(critere.id)"/>
-                                        <label class="form-label">
-                                            <t t-esc="critere.name"/>
-                                            <small t-if="vue.ev_voir_notes_agent and ligne and ligne.niveau_agent_id"
-                                                   class="text-muted">
-                                                — auto-évaluation : <t t-esc="ligne.niveau_agent_id.name"/>
-                                            </small>
-                                        </label>
-                                        <select t-if="ligne" class="form-select"
-                                                t-attf-name="critere_#{ligne.id}"
-                                                t-att-disabled="None if vue.ev_notation_modifiable else 'disabled'">
-                                            <option value="">— Non noté —</option>
-                                            <option t-foreach="niveaux" t-as="niveau"
-                                                    t-att-value="niveau.id"
-                                                    t-att-selected="'selected' if ligne.niveau_manager_id.id == niveau.id else None">
-                                                <t t-esc="niveau.name"/>
-                                            </option>
-                                        </select>
-                                    </div>
-                                </t>
-                            </t>
 
                             <h5 class="mt-4">Mes commentaires</h5>
                             <textarea name="manager_feedback" class="form-control" rows="6"
@@ -1214,7 +1346,6 @@
                                     <i class="fa fa-paper-plane"/> Publier ma notation
                                 </button>
                             </div>
-                        </t>
 
                         <!-- Dernier temps : la note est arrêtée, il reste
                              à la restituer de vive voix. -->

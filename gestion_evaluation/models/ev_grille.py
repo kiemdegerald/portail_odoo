@@ -131,6 +131,25 @@ class EvGrille(models.Model):
 
     name = fields.Char(string="Intitulé", required=True)
     description = fields.Text(string="Note d'usage")
+    # Deux façons de noter, et la banque choisit par grille :
+    #   * ÉCHELLE — chaque critère reçoit un niveau (« au-dessus du niveau
+    #     attendu »...), et la note est la moyenne pondérée des niveaux ;
+    #   * POINTS — chaque critère vaut un maximum de points, l'évaluateur
+    #     en attribue une part, et la note est la SOMME.
+    # La fiche de la banque relève du second : « disponibilité 1,
+    # éthique 2, sens de la responsabilité 1 », total sur 4.
+    mode_notation = fields.Selection([
+        ("echelle", "Échelle de niveaux"),
+        ("points", "Points par critère"),
+    ], string="Mode de notation", required=True, default="echelle",
+        help="Échelle : chaque critère reçoit un niveau, la note est une "
+             "moyenne. Points : chaque critère vaut un maximum de points, "
+             "la note est une somme.")
+    points_total = fields.Float(
+        string="Total des points", digits=(5, 2),
+        compute="_compute_points_total",
+        help="Somme des points de tous les critères. C'est le « sur "
+             "combien » de la grille en mode Points.")
     company_id = fields.Many2one(
         "res.company", string="Société",
         help="Vide = grille commune à toutes les sociétés.")
@@ -150,6 +169,43 @@ class EvGrille(models.Model):
         string="Nombre de critères", compute="_compute_nb_criteres")
     campagne_ids = fields.One2many(
         "ev.campagne", "grille_id", string="Campagnes")
+
+    poids_total = fields.Float(
+        string="Total des poids (%)", digits=(5, 2),
+        compute="_compute_poids_total",
+        help="Somme des poids des sections. Doit valoir 100 %.")
+
+    @api.depends("critere_ids.points_max")
+    def _compute_points_total(self):
+        for grille in self:
+            grille.points_total = sum(grille.critere_ids.mapped("points_max"))
+
+    @api.depends("bloc_ids.poids")
+    def _compute_poids_total(self):
+        for grille in self:
+            grille.poids_total = sum(grille.bloc_ids.mapped("poids"))
+
+    def _ev_check_poids(self):
+        """La somme des poids doit faire exactement 100 %.
+
+        Le contrôle se fait au LANCEMENT d'une campagne, pas à la saisie :
+        la RH construit sa fiche section par section, et les états
+        intermédiaires ne totalisent évidemment pas 100 %. C'est au
+        moment de s'en servir que la somme doit être juste.
+        """
+        for grille in self:
+            if grille.mode_notation != "points" or not grille.bloc_ids:
+                continue
+            total = sum(grille.bloc_ids.mapped("poids"))
+            if abs(total - 100.0) > 0.01:
+                raise UserError(_(
+                    "Les sections de « %(grille)s » totalisent %(total)s %% "
+                    "au lieu de 100 %%. Ajustez les poids avant de lancer "
+                    "la campagne : %(detail)s.",
+                    grille=grille.name or "", total=("%g" % total),
+                    detail=", ".join(
+                        "%s %g %%" % (b.name or "", b.poids)
+                        for b in grille.bloc_ids)))
 
     # --- Photographie : la grille figée d'une campagne lancée -------------
     # Le circuit est photographié au lancement (``ev.evaluation.etape``).
@@ -199,6 +255,7 @@ class EvGrille(models.Model):
                       grille=self.name or "", campagne=campagne.name or ""),
             "description": self.description,
             "company_id": self.company_id.id,
+            "mode_notation": self.mode_notation,
             "campagne_photo_id": campagne.id,
             "modele_id": self.id,
         })
@@ -208,6 +265,8 @@ class EvGrille(models.Model):
                 "grille_id": photo.id,
                 "name": bloc.name,
                 "sequence": bloc.sequence,
+                "poids": bloc.poids,
+                "type_section": bloc.type_section,
             })
             for theme in bloc.theme_ids:
                 copie_theme = Theme.create({
@@ -221,6 +280,7 @@ class EvGrille(models.Model):
                         "name": critere.name,
                         "description": critere.description,
                         "sequence": critere.sequence,
+                        "points_max": critere.points_max,
                     })
         return photo, correspondance
 
@@ -323,12 +383,19 @@ class EvGrille(models.Model):
         }
 
     def _score(self, notes):
-        """Note globale : moyenne des blocs notés.
+        """Note globale de la grille.
 
         ``notes`` : {id de critère: valeur}. Les critères non notés sont
         simplement ignorés — ils ne tirent pas la note vers le bas.
+
+        Deux arithmétiques, selon le mode : en ÉCHELLE la note est la
+        moyenne des blocs ; en POINTS c'est la SOMME de ce qui a été
+        attribué, comme sur la fiche de la banque — « 1 + 2 + 1 = 4 ».
         """
         self.ensure_one()
+        if self.mode_notation == "points":
+            return sum(notes.get(critere.id) or 0.0
+                       for critere in self.critere_ids)
         return _moyenne([bloc._score(notes) for bloc in self.bloc_ids])
 
 
@@ -376,8 +443,46 @@ class EvGrilleBloc(models.Model):
         self.mapped("grille_id")._ev_check_photo(_("modifie"))
         return super().unlink()
 
+    points_total = fields.Float(
+        string="Total des points", digits=(5, 2),
+        compute="_compute_points_total",
+        help="Somme des points des critères du bloc : le « sur combien » "
+             "du bloc en mode Points.")
+    # Une fiche est une liste de SECTIONS, et chacune pèse un pourcentage
+    # de la note finale. Le poids était jusqu'ici caché dans les points
+    # (14 + 4 + 2 = 20, donc 70/20/10 %) : personne ne le voyait, et
+    # ajouter une section déformait tout le barème.
+    poids = fields.Float(
+        string="Poids (%)", digits=(5, 2), default=0.0,
+        help="Part de cette section dans la note finale. La somme des "
+             "sections d'une fiche doit faire exactement 100 %.")
+    type_section = fields.Selection([
+        ("criteres", "Questions notées"),
+        ("objectifs", "Objectifs de l'exercice"),
+    ], string="Type de section", required=True, default="criteres",
+        help="Questions notées : la RH rédige les critères, l'évaluateur "
+             "leur attribue des points. Objectifs : la section n'a pas de "
+             "critère — sa note vient des taux de réalisation des "
+             "activités, converties par la grille de concordance.")
+
+    @api.constrains("poids")
+    def _check_poids(self):
+        for bloc in self:
+            if bloc.poids < 0 or bloc.poids > 100:
+                raise ValidationError(_(
+                    "Le poids d'une section se situe entre 0 et 100 %."))
+
+    @api.depends("theme_ids.critere_ids.points_max")
+    def _compute_points_total(self):
+        for bloc in self:
+            bloc.points_total = sum(
+                bloc.theme_ids.critere_ids.mapped("points_max"))
+
     def _score(self, notes):
         self.ensure_one()
+        if self.grille_id.mode_notation == "points":
+            return sum(notes.get(critere.id) or 0.0
+                       for critere in self.theme_ids.critere_ids)
         return _moyenne([theme._score(notes) for theme in self.theme_ids])
 
 
@@ -397,6 +502,8 @@ class EvGrilleTheme(models.Model):
         related="bloc_id.sequence", store=True, index=True)
     sequence = fields.Integer(string="Ordre", default=10)
     name = fields.Char(string="Thème", required=True)
+    mode_notation = fields.Selection(
+        related="grille_id.mode_notation", string="Mode", readonly=True)
     critere_ids = fields.One2many(
         "ev.grille.critere", "theme_id", string="Critères")
     nb_criteres = fields.Integer(
@@ -464,6 +571,29 @@ class EvGrilleCritere(models.Model):
     description = fields.Char(
         string="Précision",
         help="Aide affichée à l'évaluateur pour cadrer son appréciation.")
+    points_max = fields.Float(
+        string="Points", digits=(5, 2), default=0.0,
+        help="Nombre de points que vaut ce critère, en mode Points. "
+             "L'évaluateur en attribue tout ou partie — la fiche de la "
+             "banque accepte les demi-points.")
+    mode_notation = fields.Selection(
+        related="grille_id.mode_notation", string="Mode", readonly=True)
+
+    @api.constrains("points_max")
+    def _check_points_max(self):
+        for critere in self:
+            if critere.points_max < 0:
+                raise ValidationError(_(
+                    "Le nombre de points d'un critère ne peut pas être "
+                    "négatif."))
+            if (critere.grille_id.mode_notation == "points"
+                    and critere.bloc_id.type_section == "criteres"
+                    and not critere.points_max):
+                raise ValidationError(_(
+                    "« %(grille)s » se note en points : indiquez combien de "
+                    "points vaut le critère « %(critere)s ».",
+                    grille=critere.grille_id.name or "",
+                    critere=critere.name or ""))
 
     @api.model
     def _ev_grilles_visees(self, vals_list):

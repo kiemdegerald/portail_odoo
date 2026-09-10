@@ -9,6 +9,8 @@ campagne, qui ouvrait les objectifs en même temps qu'elle générait les
 Les deux objets sont donc séparés, et reliés par l'EXERCICE : la campagne
 « Évaluation 2027 » lit les objectifs de la période « Objectifs 2027 ».
 """
+from markupsafe import Markup
+
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 
@@ -41,6 +43,19 @@ class EvPeriodeObjectifs(models.Model):
         help="Dernier jour de la période. Passée cette date, les objectifs "
              "ne se saisissent plus — sauf réouverture par le service RH.")
 
+    # Qui tient la plume. La RH peut DÉJÀ saisir à la place d'un
+    # responsable absent ; ce réglage ajoute le fait de lui fermer la
+    # porte quand la banque veut garder la main.
+    saisie_par = fields.Selection([
+        ("manager", "Le responsable hiérarchique"),
+        ("rh", "Le service RH"),
+    ], string="Les objectifs sont fixés par", required=True,
+        default="manager", tracking=True,
+        help="Responsable : chacun fixe les objectifs de ses "
+             "collaborateurs depuis son portail. Service RH : les "
+             "responsables consultent seulement, et la RH saisit tout "
+             "depuis le back-office.")
+
     state = fields.Selection([
         ("draft", "Brouillon"),
         ("open", "Ouverte"),
@@ -48,6 +63,22 @@ class EvPeriodeObjectifs(models.Model):
         ("cancelled", "Annulée"),
     ], string="Statut", default="draft", required=True, copy=False,
         tracking=True)
+
+    # --- Trace des réouvertures --------------------------------------
+    # Rouvrir permet d'ajouter, de retirer ou de modifier des objectifs
+    # APRÈS coup — parfois alors que la campagne d'évaluation est déjà
+    # lancée. Six mois plus tard, face à un agent qui conteste sa note,
+    # il faut pouvoir dire qui a rouvert et pourquoi. Le détail de
+    # chaque réouverture est au fil de discussion ; ces champs portent
+    # la DERNIÈRE, celle qu'on veut lire sans dérouler l'historique.
+    reouverture_motif = fields.Text(
+        string="Motif de la dernière réouverture", readonly=True, copy=False)
+    reouverture_par_id = fields.Many2one(
+        "res.users", string="Rouverte par", readonly=True, copy=False)
+    reouverture_le = fields.Datetime(
+        string="Rouverte le", readonly=True, copy=False)
+    reouverture_nb = fields.Integer(
+        string="Nombre de réouvertures", readonly=True, default=0, copy=False)
 
     # ------------------------------------------------------------------
     # Ciblage de la population — même logique que la campagne
@@ -171,6 +202,56 @@ class EvPeriodeObjectifs(models.Model):
     # ------------------------------------------------------------------
     # Cycle de vie
     # ------------------------------------------------------------------
+    def action_rouvrir_wizard(self):
+        """Ouvre la fenêtre qui demande le motif de la réouverture."""
+        self.ensure_one()
+        if self.state != "closed":
+            raise UserError(_(
+                "Seule une période fermée se rouvre. Celle-ci est "
+                "« %s ».", dict(self._fields["state"].selection).get(
+                    self.state, self.state)))
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Rouvrir la période"),
+            "res_model": "ev.reouverture.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_periode_id": self.id},
+        }
+
+    def action_rouvrir(self, motif=None):
+        """Fermée -> Ouverte, avec son motif et son auteur.
+
+        Passe volontairement par un chemin distinct de `action_ouvrir` :
+        rouvrir, c'est revenir sur une période déjà close, souvent alors
+        que la campagne d'évaluation tourne. Le motif est exigé ici, au
+        modèle, et pas seulement dans la fenêtre — un import ou un appel
+        direct ne doit pas pouvoir passer à côté.
+        """
+        for periode in self:
+            if periode.state != "closed":
+                raise UserError(_(
+                    "Seule une période fermée peut être rouverte."))
+            if not (motif and motif.strip()):
+                raise UserError(_(
+                    "Indiquez le motif de la réouverture de « %s » : il "
+                    "expliquera, plus tard, pourquoi les objectifs de cet "
+                    "exercice ont été modifiés après coup.",
+                    periode.name or ""))
+            periode.write({
+                "reouverture_motif": motif.strip(),
+                "reouverture_par_id": self.env.uid,
+                "reouverture_le": fields.Datetime.now(),
+                "reouverture_nb": periode.reouverture_nb + 1,
+            })
+            periode.with_context(ev_reouverture=True).action_ouvrir()
+            periode.message_post(body=Markup(
+                "<b>%s</b><br/>%s") % (
+                    _("Période rouverte par %(qui)s (réouverture n° %(nb)s).",
+                      qui=self.env.user.name, nb=periode.reouverture_nb),
+                    _("Motif : %s", motif.strip())))
+        return True
+
     def action_ouvrir(self):
         """Brouillon -> Ouverte : les responsables peuvent saisir."""
         for periode in self:
@@ -178,6 +259,12 @@ class EvPeriodeObjectifs(models.Model):
                 raise UserError(_(
                     "Seule une période en brouillon ou fermée peut être "
                     "ouverte."))
+            if (periode.state == "closed"
+                    and not self.env.context.get("ev_reouverture")):
+                raise UserError(_(
+                    "« %s » est fermée : utilisez le bouton « Rouvrir la "
+                    "période », qui demande le motif de la réouverture.",
+                    periode.name or ""))
             if not periode._get_employees_cibles():
                 raise UserError(_(
                     "Aucun agent ne correspond au ciblage de « %(nom)s ».\n\n"
@@ -311,6 +398,24 @@ class EvPeriodeObjectifs(models.Model):
         if motif:
             raise UserError(motif)
 
+    def _ev_motif_saisie_responsable(self):
+        """Le responsable peut-il saisir, ou la RH garde-t-elle la main ?
+
+        Renvoie le motif du refus, ou None. On dit POURQUOI c'est fermé
+        plutôt que de griser un bouton sans explication.
+        """
+        self.ensure_one()
+        if self.saisie_par == "rh":
+            return _("Pour cet exercice, les objectifs sont fixés par le "
+                     "service RH. Vous les consultez ici ; adressez-vous à "
+                     "la RH pour toute modification.")
+        return self._ev_motif_ferme()
+
+    def _ev_check_saisie_responsable(self):
+        motif = self._ev_motif_saisie_responsable()
+        if motif:
+            raise UserError(motif)
+
     def _ev_agents_du_responsable(self, responsable):
         """Les collaborateurs DIRECTS du responsable, dans le ciblage.
 
@@ -384,6 +489,73 @@ class EvPeriodeObjectifs(models.Model):
             "deadline": echeance or False,
             "description": description or False,
         })
+
+    def _ev_objectifs_dupliquer(self, source, cibles, manager=None):
+        """Recopie les objectifs d'un agent vers un ou plusieurs autres.
+
+        Dans une même équipe, plusieurs agents partagent souvent la même
+        commande — trois gestionnaires du même guichet, deux techniciens
+        de la même salle. Les ressaisir un par un est long et introduit
+        des écarts de formulation qui, en fin d'exercice, rendent les
+        notes incomparables.
+
+        Ce qui est recopié : l'intitulé de l'objectif, ses précisions,
+        son échéance, et ses activités avec leur résultat attendu. Ce qui
+        ne l'est PAS : l'avancement déclaré et les mesures — ils
+        appartiennent à l'agent, pas à la commande.
+
+        Un objectif que la cible porte déjà, sous le même intitulé, est
+        laissé de côté plutôt que doublé : un second clic sur le bouton
+        ne fabrique pas de doublons.
+        """
+        self.ensure_one()
+        self._ev_check_ouverte()
+        if not source:
+            raise UserError(_("Aucun agent source n'a été désigné."))
+        cibles = cibles - source
+        if not cibles:
+            raise UserError(_(
+                "Choisissez au moins un collaborateur vers qui recopier — "
+                "autre que %s.", source.name or ""))
+        objectifs = self._ev_objectifs_de(source)
+        if not objectifs:
+            raise UserError(_(
+                "%s n'a aucun objectif à recopier pour cet exercice.",
+                source.name or ""))
+        hors_cible = cibles - self._get_employees_cibles()
+        if hors_cible:
+            raise UserError(_(
+                "%s n'est pas dans la population visée par cette période.",
+                ", ".join(hors_cible.mapped("name"))))
+
+        copies, ignores = 0, []
+        for cible in cibles:
+            deja = {(g.name or "").strip().lower()
+                    for g in self._ev_objectifs_de(cible)}
+            for objectif in objectifs:
+                libelle = (objectif.name or "").strip()
+                if libelle.lower() in deja:
+                    ignores.append("%s (%s)" % (libelle, cible.name))
+                    continue
+                copie = self._ev_objectif_creer(
+                    cible, libelle,
+                    echeance=objectif.deadline or None,
+                    description=objectif.description or None,
+                    manager=cible.parent_id or manager)
+                for activite in objectif.ev_activite_ids:
+                    self._ev_activite_creer(
+                        copie.id, activite.name,
+                        resultat_attendu=activite.resultat_attendu)
+                deja.add(libelle.lower())
+                copies += 1
+        self.message_post(body=_(
+            "Objectifs de %(depuis)s recopiés vers %(cibles)s : "
+            "%(nb)s objectif(s) créé(s)%(ignores)s.",
+            depuis=source.name or "", cibles=", ".join(cibles.mapped("name")),
+            nb=copies,
+            ignores=(_(", %s déjà présent(s) et laissé(s) de côté")
+                     % len(ignores)) if ignores else ""))
+        return {"copies": copies, "agents": len(cibles), "ignores": ignores}
 
     def _ev_activite_creer(self, objectif_id, libelle, resultat_attendu=None):
         """Ajoute une activité sous un objectif de CETTE période.

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_ev_taux_note_tree" model="ir.ui.view">
+        <field name="name">ev.taux.note.tree</field>
+        <field name="model">ev.taux.note</field>
+        <field name="arch" type="xml">
+            <tree string="Grille de concordance" editable="bottom">
+                <field name="taux_min" string="De (%)"/>
+                <field name="taux_max" string="À (%)"/>
+                <field name="note"/>
+                <field name="company_id" groups="base.group_multi_company"
+                       optional="show"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_ev_taux_note" model="ir.actions.act_window">
+        <field name="name">Grille de concordance</field>
+        <field name="res_model">ev.taux.note</field>
+        <field name="view_mode">tree</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Définissez la correspondance entre taux et note
+            </p>
+            <p>
+                Le responsable ne donne jamais une note : il constate ce qui
+                a été fait et pose un <b>taux de réalisation</b>. La note en
+                découle par cette table. C'est ce qui fait que deux
+                responsables notent la même performance de la même façon.
+            </p>
+            <p>
+                Les tranches ne doivent pas se chevaucher, et il vaut mieux
+                qu'elles couvrent tout l'intervalle de 0 à 100 %.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_ev_taux_note" name="Grille de concordance"
+              parent="hr_appraisal.menu_hr_appraisal_configuration"
+              action="action_ev_taux_note" sequence="19"
+              groups="hr_appraisal.group_hr_appraisal_manager"/>
+
+</odoo>

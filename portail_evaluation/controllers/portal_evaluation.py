@@ -35,8 +35,9 @@ SUCCESS_MESSAGES = {
              "modifier tant que vous ne l'avez pas publiée.",
     "published": "Votre auto-évaluation a été publiée : votre responsable "
                  "peut désormais la consulter.",
-    "noted": "Votre notation a été enregistrée. Vous pourrez la modifier "
-             "tant que vous ne l'avez pas publiée.",
+    "noted": "La fiche a été enregistrée : mesure des objectifs et "
+             "questions notées. Vous pourrez la modifier tant que vous ne "
+             "l'avez pas publiée.",
     "note_published": "Votre notation a été publiée : le collaborateur peut "
                       "désormais la consulter.",
     "validated": "La phase a été validée.",
@@ -119,8 +120,15 @@ class PortailEvaluation(PortailCommon):
         ])
         return objectifs.ev_periode_id
 
+    # La grille avait été coupée le temps de la reprendre : elle portait
+    # encore l'ancien contenu (savoir-faire / savoir-être). Elle porte
+    # désormais les SECTIONS de la fiche de la banque — conscience
+    # professionnelle, management — et reprend donc sa place.
+    EV_AFFICHER_GRILLE = True
+
     def _prepare_portal_layout_values(self):
         values = super()._prepare_portal_layout_values()
+        values["afficher_grille"] = self.EV_AFFICHER_GRILLE
         values["portail_is_evaluateur"] = self._est_evaluateur()
         values["portail_has_objectifs"] = self._est_responsable_objectifs()
         return values
@@ -251,6 +259,9 @@ class PortailEvaluation(PortailCommon):
             "motif_avancement": None,
             "motif_notation": None,
             "progressions": [],
+            # La partie grille est mise de côté : le drapeau la rallume
+            # sur les trois écrans à la fois.
+            "afficher_grille": self.EV_AFFICHER_GRILLE,
         }
         values.update(extra)
         return values
@@ -299,15 +310,16 @@ class PortailEvaluation(PortailCommon):
 
         if request.httprequest.method == "POST":
             try:
-                if post.get("action") != "progress_save":
-                    raise UserError(_("Action inconnue."))
-                # Une case par objectif : « progress_<id> ».
-                vue._ev_objectif_avancement({
-                    cle[len("progress_"):]: valeur
-                    for cle, valeur in post.items()
-                    if cle.startswith("progress_")})
-                return request.redirect(
-                    "/my/evaluations/%s?success=progress_saved" % appraisal.id)
+                with self._ecriture_atomique():
+                    if post.get("action") != "progress_save":
+                        raise UserError(_("Action inconnue."))
+                    # Une case par objectif : « progress_<id> ».
+                    vue._ev_objectif_avancement({
+                        cle[len("progress_"):]: valeur
+                        for cle, valeur in post.items()
+                        if cle.startswith("progress_")})
+                    return request.redirect(
+                        "/my/evaluations/%s?success=progress_saved" % appraisal.id)
             except (UserError, ValidationError) as exc:
                 error["global"] = exc.args[0] if exc.args else str(exc)
 
@@ -338,14 +350,24 @@ class PortailEvaluation(PortailCommon):
         error = {}
         if request.httprequest.method == "POST":
             try:
-                self._enregistrer_auto(appraisal, post)
-                if post.get("action") == "publish":
-                    vue.action_ev_publier_auto()
+                # Même règle que côté responsable : ce qui est saisi
+                # est enregistré, même si la publication est refusée.
+                with self._ecriture_atomique():
+                    self._enregistrer_auto(appraisal, post)
+                if post.get("action") != "publish":
                     return request.redirect(
-                        "/my/evaluations/%s?success=published" % appraisal.id)
+                        "/my/evaluations/%s/auto-evaluation?success=saved"
+                        % appraisal.id)
+                try:
+                    with self._ecriture_atomique():
+                        vue.action_ev_publier_auto()
+                except (UserError, ValidationError) as refus:
+                    raise UserError(_(
+                        "%(motif)s Votre saisie, elle, est bien "
+                        "enregistrée : rien n'est perdu.",
+                        motif=(refus.args[0] if refus.args else str(refus))))
                 return request.redirect(
-                    "/my/evaluations/%s/auto-evaluation?success=saved"
-                    % appraisal.id)
+                    "/my/evaluations/%s?success=published" % appraisal.id)
             except (UserError, ValidationError) as exc:
                 error["global"] = exc.args[0] if exc.args else str(exc)
 
@@ -400,9 +422,10 @@ class PortailEvaluation(PortailCommon):
                 error["global"] = _("Période inconnue.")
             else:
                 try:
-                    periode._ev_objectif_avancement(moi, post)
-                    return request.redirect(
-                        "/my/mes-objectifs?success=avancement_enregistre")
+                    with self._ecriture_atomique():
+                        periode._ev_objectif_avancement(moi, post)
+                        return request.redirect(
+                            "/my/mes-objectifs?success=avancement_enregistre")
                 except (UserError, ValidationError) as exc:
                     error["global"] = exc.args[0] if exc.args else str(exc)
 
@@ -478,7 +501,7 @@ class PortailEvaluation(PortailCommon):
         return request.render(
             "portail_evaluation.portal_objectifs_collaborateurs", {
                 "periode": periode,
-                "motif_ferme": periode._ev_motif_ferme(),
+                "motif_ferme": periode._ev_motif_saisie_responsable(),
                 "agents": agents,
                 "success_message": SUCCESS_MESSAGES.get(post.get("success")),
                 "page_name": "objectifs",
@@ -504,50 +527,112 @@ class PortailEvaluation(PortailCommon):
 
         if request.httprequest.method == "POST":
             try:
-                action = post.get("action")
-                if action == "goal_add":
-                    # Le responsable qui passe la commande, c'est
-                    # l'utilisateur connecté — pas forcément le supérieur
-                    # enregistré sur la fiche.
-                    moi = self._get_portal_employees()[:1]
-                    periode._ev_objectif_creer(
-                        agent, post.get("goal_name"),
-                        echeance=(post.get("goal_deadline") or "").strip()
-                        or None,
-                        description=self._texte_vers_html(
-                            post.get("goal_description")),
-                        manager=agent.parent_id or moi)
-                    return request.redirect(retour + "?success=objectif_fixe")
-                if action == "goal_remove":
-                    self._ev_verifier_mon_objectif(periode,
-                                                   post.get("goal_id"))
-                    periode._ev_objectif_supprimer(post.get("goal_id"))
-                    return request.redirect(
-                        retour + "?success=objectif_retire")
-                if action == "activite_add":
-                    self._ev_verifier_mon_objectif(periode,
-                                                   post.get("goal_id"))
-                    periode._ev_activite_creer(
-                        post.get("goal_id"), post.get("activite_name"),
-                        resultat_attendu=post.get("resultat_attendu"))
-                    return request.redirect(
-                        retour + "?success=activite_ajoutee")
-                if action == "activite_remove":
-                    periode._ev_activite_supprimer(post.get("activite_id"))
-                    return request.redirect(
-                        retour + "?success=activite_retiree")
+                with self._ecriture_atomique():
+                    # La banque peut avoir décidé que la RH tient la
+                    # plume pour cet exercice : le responsable consulte
+                    # seulement.
+                    periode._ev_check_saisie_responsable()
+                    action = post.get("action")
+                    if action == "goal_add":
+                        # Le responsable qui passe la commande, c'est
+                        # l'utilisateur connecté — pas forcément le supérieur
+                        # enregistré sur la fiche.
+                        moi = self._get_portal_employees()[:1]
+                        periode._ev_objectif_creer(
+                            agent, post.get("goal_name"),
+                            echeance=(post.get("goal_deadline") or "").strip()
+                            or None,
+                            description=self._texte_vers_html(
+                                post.get("goal_description")),
+                            manager=agent.parent_id or moi)
+                        return request.redirect(retour + "?success=objectif_fixe")
+                    if action == "goal_remove":
+                        self._ev_verifier_mon_objectif(periode,
+                                                       post.get("goal_id"))
+                        periode._ev_objectif_supprimer(post.get("goal_id"))
+                        return request.redirect(
+                            retour + "?success=objectif_retire")
+                    if action == "activite_add":
+                        self._ev_verifier_mon_objectif(periode,
+                                                       post.get("goal_id"))
+                        periode._ev_activite_creer(
+                            post.get("goal_id"), post.get("activite_name"),
+                            resultat_attendu=post.get("resultat_attendu"))
+                        return request.redirect(
+                            retour + "?success=activite_ajoutee")
+                    if action == "activite_remove":
+                        periode._ev_activite_supprimer(post.get("activite_id"))
+                        return request.redirect(
+                            retour + "?success=activite_retiree")
+                    if action == "goals_duplicate":
+                        # Les cases cochées arrivent en plusieurs valeurs
+                        # sous le même nom : `post` n'en garde qu'une,
+                        # d'où la lecture directe du formulaire.
+                        ids = request.httprequest.form.getlist("cible_ids")
+                        cibles = self._ev_mes_collaborateurs(periode).filtered(
+                            lambda e: str(e.id) in ids)
+                        if not cibles:
+                            raise UserError(_(
+                                "Choisissez au moins un collaborateur vers "
+                                "qui recopier ces objectifs."))
+                        moi = self._get_portal_employees()[:1]
+                        bilan = periode._ev_objectifs_dupliquer(
+                            agent, cibles, manager=moi)
+                        return request.redirect(
+                            "%s?success=objectifs_dupliques&copies=%s"
+                            "&agents=%s&ignores=%s"
+                            % (retour, bilan["copies"], bilan["agents"],
+                               len(bilan["ignores"])))
             except (UserError, ValidationError) as exc:
                 error["global"] = exc.args[0] if exc.args else str(exc)
 
         return request.render("portail_evaluation.portal_objectifs_agent", {
             "periode": periode,
-            "motif_ferme": periode._ev_motif_ferme(),
+            # Le motif couvre les deux cas : période fermée, ou saisie
+            # réservée à la RH.
+            "motif_ferme": periode._ev_motif_saisie_responsable(),
+            "saisie_ouverte": not periode._ev_motif_saisie_responsable(),
             "agent": agent,
             "objectifs": periode._ev_objectifs_de(agent),
+            # Vers qui recopier : mes autres collaborateurs de la période,
+            # avec ce qu'ils ont déjà — recopier vers quelqu'un qui a déjà
+            # ses objectifs n'est pas la même décision.
+            "autres_agents": [
+                (autre, len(periode._ev_objectifs_de(autre)))
+                for autre in self._ev_mes_collaborateurs(periode) - agent
+            ],
             "error": error,
-            "success_message": SUCCESS_MESSAGES.get(post.get("success")),
+            "success_message": self._ev_message_duplication(post)
+            or SUCCESS_MESSAGES.get(post.get("success")),
             "page_name": "objectifs",
         })
+
+    def _ev_message_duplication(self, post):
+        """Le compte rendu d'une duplication, chiffres à l'appui.
+
+        « Enregistré » ne suffit pas ici : le responsable doit savoir
+        combien d'objectifs sont partis, vers combien d'agents, et
+        combien ont été laissés de côté parce qu'ils y étaient déjà.
+        """
+        if post.get("success") != "objectifs_dupliques":
+            return None
+
+        def entier(cle):
+            try:
+                return int(post.get(cle) or 0)
+            except (TypeError, ValueError):
+                return 0
+
+        copies, agents, ignores = (entier("copies"), entier("agents"),
+                                   entier("ignores"))
+        message = _(
+            "%(copies)s objectif(s) recopié(s) vers %(agents)s "
+            "collaborateur(s).", copies=copies, agents=agents)
+        if ignores:
+            message += " " + _(
+                "%s objectif(s) y figuraient déjà : ils n'ont pas été "
+                "recopiés.", ignores)
+        return message
 
     @http.route(["/my/team/evaluations",
                  "/my/team/evaluations/page/<int:page>"],
@@ -605,61 +690,78 @@ class PortailEvaluation(PortailCommon):
             commentaire = (post.get("comment") or "").strip() or None
             try:
                 if action in ("save", "publish"):
-                    self._enregistrer_notation(appraisal, post)
-                    if action == "publish":
-                        vue.action_ev_publier_notation()
+                    # La saisie s'enregistre pour elle-même. Publier est
+                    # une décision SÉPARÉE : si elle est refusée — une
+                    # fiche encore incomplète, par exemple — ce qui vient
+                    # d'être saisi reste en base. Les enchaîner dans le
+                    # même point de reprise faisait tout perdre.
+                    with self._ecriture_atomique():
+                        vue._ev_mesurer(post)
+                        self._enregistrer_notation(appraisal, post)
+                    if action != "publish":
                         return request.redirect(
-                            "/my/team/evaluations/%s?success=note_published"
+                            "/my/team/evaluations/%s?success=noted"
                             % appraisal.id)
+                    try:
+                        with self._ecriture_atomique():
+                            vue.action_ev_publier_notation()
+                    except (UserError, ValidationError) as refus:
+                        raise UserError(_(
+                            "%(motif)s Votre saisie, elle, est bien "
+                            "enregistrée : rien n'est perdu.",
+                            motif=(refus.args[0] if refus.args
+                                   else str(refus))))
                     return request.redirect(
-                        "/my/team/evaluations/%s?success=noted" % appraisal.id)
-                if action == "goal_add":
-                    vue._ev_objectif_creer(
-                        post.get("goal_name"),
-                        echeance=(post.get("goal_deadline") or "").strip()
-                        or None,
-                        description=self._texte_vers_html(
-                            post.get("goal_description")))
-                    return request.redirect(
-                        "/my/team/evaluations/%s?success=goal_added"
+                        "/my/team/evaluations/%s?success=note_published"
                         % appraisal.id)
-                if action == "goal_remove":
-                    vue._ev_objectif_supprimer(post.get("goal_id"))
-                    return request.redirect(
-                        "/my/team/evaluations/%s?success=goal_removed"
-                        % appraisal.id)
-                if action == "interview_set":
-                    vue._ev_fixer_entretien(
-                        post.get("date_entretien"),
-                        heure_entretien=(post.get("heure_entretien")
-                                         or "").strip() or None)
-                    return request.redirect(
-                        "/my/team/evaluations/%s?success=interview_set"
-                        % appraisal.id)
-                if action == "report_add":
-                    fichier = request.httprequest.files.get(
-                        "compte_rendu")
-                    contenu = fichier.read() if fichier else b""
-                    if not contenu:
-                        raise ValidationError(_(
-                            "Choisissez un fichier à déposer."))
-                    validate_justificatif(fichier.filename, contenu)
-                    vue._ev_deposer_compte_rendu(
-                        base64.b64encode(contenu), fichier.filename)
-                    return request.redirect(
-                        "/my/team/evaluations/%s?success=report_saved"
-                        % appraisal.id)
-                if action == "validate":
-                    entretien = vue.ev_entretien_modifiable
-                    vue.action_ev_valider_etape(comment=commentaire)
-                    return request.redirect(
-                        "/my/team/evaluations?success=%s"
-                        % ("interview_done" if entretien else "validated"))
-                if action == "send_back":
-                    vue.action_ev_renvoyer(comment=commentaire)
-                    return request.redirect(
-                        "/my/team/evaluations?success=sent_back")
-                raise UserError(_("Action inconnue."))
+                with self._ecriture_atomique():
+                    if action == "goal_add":
+                        vue._ev_objectif_creer(
+                            post.get("goal_name"),
+                            echeance=(post.get("goal_deadline") or "").strip()
+                            or None,
+                            description=self._texte_vers_html(
+                                post.get("goal_description")))
+                        return request.redirect(
+                            "/my/team/evaluations/%s?success=goal_added"
+                            % appraisal.id)
+                    if action == "goal_remove":
+                        vue._ev_objectif_supprimer(post.get("goal_id"))
+                        return request.redirect(
+                            "/my/team/evaluations/%s?success=goal_removed"
+                            % appraisal.id)
+                    if action == "interview_set":
+                        vue._ev_fixer_entretien(
+                            post.get("date_entretien"),
+                            heure_entretien=(post.get("heure_entretien")
+                                             or "").strip() or None)
+                        return request.redirect(
+                            "/my/team/evaluations/%s?success=interview_set"
+                            % appraisal.id)
+                    if action == "report_add":
+                        fichier = request.httprequest.files.get(
+                            "compte_rendu")
+                        contenu = fichier.read() if fichier else b""
+                        if not contenu:
+                            raise ValidationError(_(
+                                "Choisissez un fichier à déposer."))
+                        validate_justificatif(fichier.filename, contenu)
+                        vue._ev_deposer_compte_rendu(
+                            base64.b64encode(contenu), fichier.filename)
+                        return request.redirect(
+                            "/my/team/evaluations/%s?success=report_saved"
+                            % appraisal.id)
+                    if action == "validate":
+                        entretien = vue.ev_entretien_modifiable
+                        vue.action_ev_valider_etape(comment=commentaire)
+                        return request.redirect(
+                            "/my/team/evaluations?success=%s"
+                            % ("interview_done" if entretien else "validated"))
+                    if action == "send_back":
+                        vue.action_ev_renvoyer(comment=commentaire)
+                        return request.redirect(
+                            "/my/team/evaluations?success=sent_back")
+                    raise UserError(_("Action inconnue."))
             except (UserError, ValidationError) as exc:
                 error["global"] = exc.args[0] if exc.args else str(exc)
 
@@ -683,6 +785,24 @@ class PortailEvaluation(PortailCommon):
         niveaux_valides = set(
             appraisal.ev_niveau_ids.ids)
         for ligne in appraisal.ev_note_ids:
+            # Deux façons de noter, selon la grille : un NIVEAU choisi dans
+            # l'échelle, ou des POINTS attribués sur ce que vaut le critère.
+            if ligne.mode_notation == "points":
+                brut = (post.get("points_%s" % ligne.id) or "").strip()
+                if not brut:
+                    continue
+                brut = brut.replace(",", ".")
+                try:
+                    valeur = float(brut)
+                except ValueError:
+                    raise ValidationError(_(
+                        "Note invalide pour « %(critere)s » : « %(val)s ». "
+                        "Attendu un nombre entre 0 et %(max)s.",
+                        critere=ligne.critere_id.name or "", val=brut,
+                        max=("%g" % ligne.points_max)))
+                ligne.with_user(request.env.user).sudo().write(
+                    {"valeur_manager": valeur})
+                continue
             brut = (post.get("critere_%s" % ligne.id) or "").strip()
             if not brut:
                 continue

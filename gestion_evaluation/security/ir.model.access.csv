@@ -6,6 +6,10 @@ access_ev_periode_manager,ev.periode.objectifs.manager,model_ev_periode_objectif
 access_ev_objectif_wizard,ev.objectif.wizard,model_ev_objectif_wizard,hr_appraisal.group_hr_appraisal_manager,1,1,1,1
 access_ev_activite_all,ev.objectif.activite.lecture,model_ev_objectif_activite,base.group_user,1,0,0,0
 access_ev_activite_manager,ev.objectif.activite.manager,model_ev_objectif_activite,hr_appraisal.group_hr_appraisal_manager,1,1,1,1
+access_ev_taux_note_all,ev.taux.note.lecture,model_ev_taux_note,base.group_user,1,0,0,0
+access_ev_taux_note_manager,ev.taux.note.manager,model_ev_taux_note,hr_appraisal.group_hr_appraisal_manager,1,1,1,1
+access_ev_mesure_all,ev.activite.mesure.lecture,model_ev_activite_mesure,base.group_user,1,0,0,0
+access_ev_mesure_manager,ev.activite.mesure.manager,model_ev_activite_mesure,hr_appraisal.group_hr_appraisal_manager,1,1,1,1
 access_ev_circuit_phase_all,ev.circuit.phase.lecture,model_ev_circuit_phase,base.group_user,1,0,0,0
 access_ev_circuit_phase_manager,ev.circuit.phase.manager,model_ev_circuit_phase,hr_appraisal.group_hr_appraisal_manager,1,1,1,1
 access_ev_evaluation_etape_all,ev.evaluation.etape.lecture,model_ev_evaluation_etape,base.group_user,1,0,0,0
@@ -23,3 +27,4 @@ access_ev_grille_critere_all,ev.grille.critere.lecture,model_ev_grille_critere,b
 access_ev_grille_critere_manager,ev.grille.critere.manager,model_ev_grille_critere,hr_appraisal.group_hr_appraisal_manager,1,1,1,1
 access_ev_notation_ligne_user,ev.notation.ligne.user,model_ev_notation_ligne,base.group_user,1,1,0,0
 access_ev_notation_ligne_manager,ev.notation.ligne.manager,model_ev_notation_ligne,hr_appraisal.group_hr_appraisal_manager,1,1,1,1
+access_ev_reouverture_wizard,ev.reouverture.wizard,model_ev_reouverture_wizard,hr_appraisal.group_hr_appraisal_manager,1,1,1,1

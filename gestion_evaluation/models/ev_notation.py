@@ -13,6 +13,7 @@ si bien qu'une échelle modifiée plus tard ne réécrit jamais une notation
 déjà faite.
 """
 from odoo import api, fields, models, _
+from odoo.exceptions import ValidationError
 from odoo.exceptions import UserError
 
 # Champs réservés à chacun : sert aussi bien au verrou d'écriture qu'à
@@ -61,6 +62,28 @@ class EvNotationLigne(models.Model):
         help="Note du manager moins auto-évaluation. Utile pour préparer "
              "l'entretien : c'est là que le dialogue se joue.")
     commentaire = fields.Char(string="Observation")
+    points_max = fields.Float(
+        related="critere_id.points_max", string="Points",
+        readonly=True, digits=(5, 2))
+    mode_notation = fields.Selection(
+        related="critere_id.grille_id.mode_notation", readonly=True)
+
+    @api.constrains("valeur_manager", "valeur_agent")
+    def _check_points(self):
+        """En mode Points, on ne peut pas attribuer plus que le critère ne
+        vaut — sinon la note globale sort de son barème sans qu'on le
+        voie."""
+        for ligne in self:
+            if ligne.mode_notation != "points" or not ligne.points_max:
+                continue
+            for valeur, qui in ((ligne.valeur_manager, _("du responsable")),
+                                (ligne.valeur_agent, _("de l'agent"))):
+                if valeur < 0 or valeur > ligne.points_max:
+                    raise ValidationError(_(
+                        "La note %(qui)s pour « %(critere)s » doit se situer "
+                        "entre 0 et %(max)s point(s).",
+                        qui=qui, critere=ligne.critere_id.name or "",
+                        max=("%g" % ligne.points_max)))
 
     @api.depends("niveau_agent_id", "niveau_manager_id")
     def _compute_valeurs(self):

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Table de concordance de départ, reprise de la fiche d'évaluation
+         fournie par la banque. Le service RH la modifie librement :
+         `noupdate` garantit qu'une mise à jour du module ne réécrit pas
+         ses réglages. -->
+    <data noupdate="1">
+
+        <record id="taux_note_01" model="ev.taux.note">
+            <field name="taux_min">0</field>
+            <field name="taux_max">10.99</field>
+            <field name="note">2</field>
+        </record>
+        <record id="taux_note_02" model="ev.taux.note">
+            <field name="taux_min">11</field>
+            <field name="taux_max">20.99</field>
+            <field name="note">3</field>
+        </record>
+        <record id="taux_note_03" model="ev.taux.note">
+            <field name="taux_min">21</field>
+            <field name="taux_max">30.99</field>
+            <field name="note">4</field>
+        </record>
+        <record id="taux_note_04" model="ev.taux.note">
+            <field name="taux_min">31</field>
+            <field name="taux_max">40.99</field>
+            <field name="note">5</field>
+        </record>
+        <record id="taux_note_05" model="ev.taux.note">
+            <field name="taux_min">41</field>
+            <field name="taux_max">50.99</field>
+            <field name="note">6</field>
+        </record>
+        <record id="taux_note_06" model="ev.taux.note">
+            <field name="taux_min">51</field>
+            <field name="taux_max">60.99</field>
+            <field name="note">7</field>
+        </record>
+        <record id="taux_note_07" model="ev.taux.note">
+            <field name="taux_min">61</field>
+            <field name="taux_max">65.99</field>
+            <field name="note">8</field>
+        </record>
+        <record id="taux_note_08" model="ev.taux.note">
+            <field name="taux_min">66</field>
+            <field name="taux_max">70.99</field>
+            <field name="note">9</field>
+        </record>
+        <record id="taux_note_09" model="ev.taux.note">
+            <field name="taux_min">71</field>
+            <field name="taux_max">75.99</field>
+            <field name="note">10</field>
+        </record>
+        <record id="taux_note_10" model="ev.taux.note">
+            <field name="taux_min">76</field>
+            <field name="taux_max">80.99</field>
+            <field name="note">11</field>
+        </record>
+        <record id="taux_note_11" model="ev.taux.note">
+            <field name="taux_min">81</field>
+            <field name="taux_max">85.99</field>
+            <field name="note">12</field>
+        </record>
+        <record id="taux_note_12" model="ev.taux.note">
+            <field name="taux_min">86</field>
+            <field name="taux_max">90.99</field>
+            <field name="note">13</field>
+        </record>
+        <record id="taux_note_13" model="ev.taux.note">
+            <field name="taux_min">91</field>
+            <field name="taux_max">100</field>
+            <field name="note">14</field>
+        </record>
+
+    </data>
+</odoo>

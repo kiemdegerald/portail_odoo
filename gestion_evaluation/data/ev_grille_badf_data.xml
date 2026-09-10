@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- La grille de la fiche d'évaluation de la banque : les critères de
+         COMPORTEMENT, notés en points. Les objectifs, eux, ne sont pas ici
+         — ils viennent des activités et de la grille de concordance.
+
+         `noupdate` : le service RH ajuste librement les critères et leurs
+         points, une mise à jour du module ne réécrit pas ses réglages. -->
+    <data noupdate="1">
+
+        <record id="grille_fiche_badf" model="ev.grille">
+            <field name="name">Fiche d'évaluation BADF</field>
+            <field name="mode_notation">points</field>
+            <field name="description">Critères de comportement de la fiche
+                d'évaluation annuelle. Chaque critère vaut un nombre de
+                points ; l'évaluateur en attribue tout ou partie, les
+                demi-points sont admis. La note des objectifs, elle, est
+                calculée à part depuis les activités.</field>
+        </record>
+
+        <!-- Section « Objectifs » — 70 % de la note. Elle n'a pas de
+             critère : sa note vient des taux de réalisation. -->
+        <record id="bloc_fiche_objectifs" model="ev.grille.bloc">
+            <field name="grille_id" ref="grille_fiche_badf"/>
+            <field name="sequence">5</field>
+            <field name="name">Objectifs de l'exercice</field>
+            <field name="type_section">objectifs</field>
+            <field name="poids">70</field>
+        </record>
+
+        <!-- Section « Conscience professionnelle » — 20 % -->
+        <record id="bloc_fiche_conscience" model="ev.grille.bloc">
+            <field name="grille_id" ref="grille_fiche_badf"/>
+            <field name="sequence">10</field>
+            <field name="name">Conscience professionnelle</field>
+            <field name="type_section">criteres</field>
+            <field name="poids">20</field>
+        </record>
+        <record id="theme_fiche_conscience" model="ev.grille.theme">
+            <field name="bloc_id" ref="bloc_fiche_conscience"/>
+            <field name="sequence">10</field>
+            <field name="name">Conscience professionnelle</field>
+        </record>
+        <record id="critere_fiche_disponibilite" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_fiche_conscience"/>
+            <field name="sequence">10</field>
+            <field name="name">Disponibilité</field>
+            <field name="points_max">1</field>
+        </record>
+        <record id="critere_fiche_ethique" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_fiche_conscience"/>
+            <field name="sequence">20</field>
+            <field name="name">Éthique professionnelle</field>
+            <field name="points_max">2</field>
+        </record>
+        <record id="critere_fiche_responsabilite" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_fiche_conscience"/>
+            <field name="sequence">30</field>
+            <field name="name">Sens de la responsabilité</field>
+            <field name="points_max">1</field>
+        </record>
+
+        <!-- Section « Management et leadership » — 10 % -->
+        <record id="bloc_fiche_management" model="ev.grille.bloc">
+            <field name="grille_id" ref="grille_fiche_badf"/>
+            <field name="sequence">20</field>
+            <field name="name">Management et leadership</field>
+            <field name="type_section">criteres</field>
+            <field name="poids">10</field>
+        </record>
+        <record id="theme_fiche_management" model="ev.grille.theme">
+            <field name="bloc_id" ref="bloc_fiche_management"/>
+            <field name="sequence">10</field>
+            <field name="name">Management et leadership</field>
+        </record>
+        <record id="critere_fiche_animation" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_fiche_management"/>
+            <field name="sequence">10</field>
+            <field name="name">Animation d'équipe</field>
+            <field name="points_max">1</field>
+        </record>
+        <record id="critere_fiche_evaluer" model="ev.grille.critere">
+            <field name="theme_id" ref="theme_fiche_management"/>
+            <field name="sequence">20</field>
+            <field name="name">Capacité à évaluer</field>
+            <field name="points_max">1</field>
+        </record>
+
+    </data>
+</odoo>

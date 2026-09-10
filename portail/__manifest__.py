@@ -28,7 +28,7 @@ pour accueillir d'autres sections (contrat, documents, attestations...).
     "author": "LICELI Technologies",
     "website": "https://www.liceli-technologies.com",
     "category": "Human Resources",
-    "version": "17.0.1.11.0",
+    "version": "17.0.1.12.0",
     "license": "LGPL-3",
     "depends": [
         "portal",

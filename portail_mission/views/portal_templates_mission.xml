@@ -7,7 +7,7 @@
               inherit_id="portal.portal_my_home" priority="40">
         <xpath expr="//div[hasclass('o_portal_docs')]" position="inside">
             <t t-call="portal.portal_docs_entry">
-                <t t-set="title">Missions</t>
+                <t t-set="title">Mes missions</t>
                 <t t-set="url" t-value="'/my/missions'"/>
                 <t t-set="text">Suivre mes demandes de mission</t>
                 <t t-set="config_card" t-value="True"/>
@@ -28,8 +28,8 @@
               inherit_id="portal.portal_breadcrumbs" priority="40">
         <xpath expr="//ol[hasclass('o_portal_submenu')]" position="inside">
             <li t-if="page_name == 'mission'" class="breadcrumb-item">
-                <a t-if="mission" href="/my/missions">Missions</a>
-                <t t-else="">Missions</t>
+                <a t-if="mission" href="/my/missions">Mes missions</a>
+                <t t-else="">Mes missions</t>
             </li>
             <li t-if="page_name == 'mission' and mission" class="breadcrumb-item active">
                 <t t-esc="mission.name"/>
@@ -49,7 +49,7 @@
         <t t-call="portal.portal_layout">
             <t t-set="breadcrumbs_searchbar" t-value="True"/>
             <t t-call="portal.portal_searchbar">
-                <t t-set="title">Missions</t>
+                <t t-set="title">Mes missions</t>
             </t>
 
             <div t-if="success_message" class="alert alert-success mt-3" role="alert">
